@@ -7,10 +7,7 @@ from matplotlib.collections import PolyCollection
 from shapely.geometry import Polygon
 from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
-import sys
-
-
-
+from scipy.spatial.distance import cdist, euclidean
 
 """
 問題設定① 
@@ -29,13 +26,15 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・一点一点独立に扱っているので統一性を持たせたい
 ・挙動を見たいので更新過程も可視化する
 ・可視化になるべく時間がかからないようにしたい
+・なぜか45度回転するのでそこのデバッグ＋分布の可視化をやめる
+・np.array2dの可視化の際の座標配置は(y,x)の順番になるからそこが関係している可能性はある。
 """
 
 
 def main():
     #ポストの用意
-    n=2
-    pnts = np.array([[-1.0,0],[1.0,0]])
+    n=3
+    pnts = np.array([[-1.5,0],[1.5,0],[0,1.5]])
     print(pnts)
     #ボロノイ分割する領域
     bnd = np.array([[-5,-5],[5,-5],[5,5],[-5,5]])
@@ -44,28 +43,22 @@ def main():
     draw_voronoi(bnd,pnts,vor_polys)
     #k-means法
     g = np.zeros((n,2))
-    eps = 1e-4
+    eps = 1e-2
     #do while 文を実装
-    sample_recordsx = []
-    sample_recordsy = []
-    sample_records = []
     while 1 :
         for i in range(n):
-            g[i][0],sample_records= g_function(pnts,i)
-            g[i][1],sample_records= g_function(pnts,i)
+            g[i][0]= g_function(pnts,i,0)
+            g[i][1]= g_function(pnts,i,1)
         print("g",g)
         if norm(g,pnts,eps):
             pnts = g
             break
-        pnts = g
+        #そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
+        pnts = np.copy(g)
+        print("pnts",pnts)
     #解の描画
     print("optimized points:",pnts)
-    print("cost:",cost_function(pnts))
-    for i in range(len(sample_records)):
-        sample_recordsx.append(sample_records[i][0])
-        sample_recordsy.append(sample_records[i][1])
-    plt.scatter(sample_recordsx, sample_recordsy)
-    plt.show()
+    #print("cost:",cost_function(pnts))
     optimized_vor = bounded_voronoi(bnd, pnts)
     draw_voronoi(bnd,pnts,optimized_vor)
     
@@ -133,20 +126,23 @@ def dist(x,y,px,py):
 
 #whileループの判定関数
 def norm(g,y,eps):
+    print("g",g)
+    print("y",y)
+    print("eps",eps)
     p = len(g)
     n = len(g[0])
     for i in range(p):
         sum = 0
         for j in range(n):
             sum += (g[i][j]-y[i][j])**2
+            print("sum",sum)
         if sum > eps:
-            return 1
-    return 0
+            return 0
+    return 1
 
 #コスト関数はモンテカルロ法で近似、正規化定数は1とみなし、標本平均を計算しているだけ。
-def g_function(pnts,i):
+def g_function(pnts,i,xy_index):
     postsize = len(pnts)
-    sample_records = []
     #正規分布のパラメーター
     mean = np.array([0,0])
     cov = np.array([[1,0],[0,1]])
@@ -155,44 +151,56 @@ def g_function(pnts,i):
     vor = bounded_voronoi(bnd, pnts)
     sigma = 0
     counter = 0
-    tmp_sigma = 0
+    tmp_sigma_upper = 0
+    tmp_sigma_lower = 0
     polygon = Feature(geometry = Polygon(vor[i]))
     for j in range(10000):
         sample_point = np.random.multivariate_normal(mean, cov)
-        sample_records.append(list(sample_point))
+        sample_point2 = np.random.multivariate_normal(mean, cov)
         sample_point_judge = Feature(geometry = Point(list(sample_point)))
+        sample_point_judge2 = Feature(geometry = Point(list(sample_point2)))
         if boolean_point_in_polygon(sample_point_judge, polygon):
-            tmp_sigma += sample_point[0]
+            tmp_sigma_upper += sample_point[xy_index] 
             counter += 1
+        if boolean_point_in_polygon(sample_point_judge2, polygon):
+            tmp_sigma_lower += 1
     if counter > 0:
         print("counter:",counter)
-        sigma += tmp_sigma/(counter)
-    return sigma,sample_records
-#コスト関数はひとまずモンテカルロ法で近似する
-def cost_function(pnts):
-    pnts = pnts.reshape([-1,2])
-    postsize = len(pnts)
-    #正規分布のパラメーター
-    mean = np.array([0,0])
-    cov = np.array([[1.5*1.5,0],[0,1]])
-    #領域境界の方法をもうすこし工夫したい
-    bnd = np.array([[-5,-5],[5,-5],[5,5],[-5,5]])
-    vor = bounded_voronoi(bnd, pnts)
-    sigma = 0
-    for i in range(postsize):
-        counter = 0
-        tmp_sigma = 0
-        polygon = Feature(geometry = Polygon(vor[i]))
-        for j in range(100):
-            sample_point = np.random.multivariate_normal(mean, cov)
-            sample_point_judge = Feature(geometry = Point(list(sample_point)))
-            if boolean_point_in_polygon(sample_point_judge, polygon):
-                tmp_sigma += dist(sample_point[0], sample_point[1],pnts[i][0],pnts[i][1])
-                counter += 1
-        if counter > 0:
-            sigma += tmp_sigma/counter
+        sigma += tmp_sigma_upper/tmp_sigma_lower
     return sigma
+
+#geometric medianの計算
+
+def geometric_median(X, eps=1e-5):
+    y = np.mean(X, 0)
+
+    while True:
+        D = cdist(X, [y])
+        nonzeros = (D != 0)[:, 0]
+
+        Dinv = 1 / D[nonzeros]
+        Dinvs = np.sum(Dinv)
+        W = Dinv / Dinvs
+        T = np.sum(W * X[nonzeros], 0)
+
+        num_zeros = len(X) - np.sum(nonzeros)
+        if num_zeros == 0:
+            y1 = T
+        elif num_zeros == len(X):
+            return y
+        else:
+            R = (T - y) * Dinvs
+            r = np.linalg.norm(R)
+            rinv = 0 if r == 0 else num_zeros/r
+            y1 = max(0, 1-rinv)*T + min(1, rinv)*y
+
+        if euclidean(y, y1) < eps:
+            return y1
+
+        y = y1
 
 if __name__ == '__main__':
     main()
+    
+    
 
