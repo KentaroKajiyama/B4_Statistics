@@ -51,8 +51,7 @@ def main():
     #do while 文を実装
     while 1 :
         for i in range(n):
-            g[i][0]= g_function(pnts,i,0)
-            g[i][1]= g_function(pnts,i,1)
+            g[i] = g_function(pnts,i)
         print("g",g)
         if norm(g,pnts,eps):
             pnts = g
@@ -62,7 +61,6 @@ def main():
         print("pnts",pnts)
     #解の描画
     print("optimized points:",pnts)
-    #print("cost:",cost_function(pnts))
     optimized_vor = bounded_voronoi(bnd, pnts)
     draw_voronoi(bnd,pnts,optimized_vor)
     
@@ -145,11 +143,12 @@ def norm(g,y,eps):
     return 1
 
 #コスト関数はモンテカルロ法で近似、正規化定数は1とみなし、標本平均を計算しているだけ。
-def g_function(pnts,i,xy_index):
+def g_function(pnts,i):
     postsize = len(pnts)
+    answer = pnts[i]
     #正規分布のパラメーター
     mean = np.array([0,0])
-    cov = np.array([[1,0],[0,1]])
+    cov = np.array([[2.25,0],[0,1]])
     #領域境界の方法をもうすこし工夫したい
     bnd = np.array([[-5,-5],[5,-5],[5,5],[-5,5]])
     vor = bounded_voronoi(bnd, pnts)
@@ -158,17 +157,47 @@ def g_function(pnts,i,xy_index):
     tmp_sigma_upper = 0
     tmp_sigma_lower = 0
     polygon = Feature(geometry = Polygon(vor[i]))
+    judged_points = []
     for j in range(10000):
-        sample_point = np.random.multivariate_normal(mean, cov)
-        sample_point_judge = Feature(geometry = Point(list(sample_point)))
+        sample_point = list(np.random.multivariate_normal(mean, cov))
+        sample_point_judge = Feature(geometry = Point(sample_point))
         if boolean_point_in_polygon(sample_point_judge, polygon):
-            tmp_sigma_upper += sample_point[xy_index] 
+            judged_points.append(sample_point)
             counter += 1
     if counter > 0:
         print("counter:",counter)
-        sigma += tmp_sigma_upper/counter
-    return sigma
+        answer = geometric_median(np.array(judged_points))
+    return answer
 
+#geometric medianの計算
+
+def geometric_median(X, eps=1e-5):
+    y = np.mean(X, 0)
+
+    while True:
+        D = cdist(X, [y])
+        nonzeros = (D != 0)[:, 0]
+
+        Dinv = 1 / D[nonzeros]
+        Dinvs = np.sum(Dinv)
+        W = Dinv / Dinvs
+        T = np.sum(W * X[nonzeros], 0)
+
+        num_zeros = len(X) - np.sum(nonzeros)
+        if num_zeros == 0:
+            y1 = T
+        elif num_zeros == len(X):
+            return y
+        else:
+            R = (T - y) * Dinvs
+            r = np.linalg.norm(R)
+            rinv = 0 if r == 0 else num_zeros/r
+            y1 = max(0, 1-rinv)*T + min(1, rinv)*y
+
+        if euclidean(y, y1) < eps:
+            return y1
+
+        y = y1
 
 if __name__ == '__main__':
     main()
