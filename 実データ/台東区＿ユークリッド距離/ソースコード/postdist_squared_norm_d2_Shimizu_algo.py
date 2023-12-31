@@ -10,6 +10,7 @@ from shapely.geometry import Polygon
 from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
 from scipy.spatial.distance import cdist, euclidean
+import shp_to_mesh
 from matplotlib import rcParams
 rcParams['lines.markersize']=1.0
 rcParams['font.family'] = 'sans-serif'
@@ -42,31 +43,33 @@ def main():
     n=3
     pnts = np.array([[139.77289, 35.72038],[139.7933,35.72189],[139.78465,35.70103]])
     #ボロノイ分割する領域（台東区）bndはPolygon型
-    gdf = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/data/人口分布データ/taito_polygon.shp")
-    bnd_poly = gdf["geometry"].iloc[0]
+    gdf_bound = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/data/人口分布データ/taito_polygon.shp")
+    gdf_mesh = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/台東区＿ユークリッド距離/ソースコード/台東区＿メッシュあり.shp")
+    print(gdf_mesh.dropna)
+    bnd_poly = gdf_bound["geometry"].iloc[0]
     #初期状態を図示
     vor_polys = bounded_voronoi(bnd_poly, pnts)
-    draw_voronoi(bnd_poly,pnts,vor_polys)
-    # #k-means法
-    # g = np.zeros((n,2))
-    # eps = 1e-3
-    # #do while 文を実装
-    # while 1 :
-    #     for i in range(n):
-    #         g[i][0]= g_function(pnts,i,0)
-    #         g[i][1]= g_function(pnts,i,1)
-    #     print("g",g)
-    #     if norm(g,pnts,eps):
-    #         pnts = g
-    #         break
-    #     #そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
-    #     pnts = np.copy(g)
-    #     print("pnts",pnts)
-    # #解の描画
-    # print("optimized points:",pnts)
-    # #print("cost:",cost_function(pnts))
-    # optimized_vor = bounded_voronoi(bnd_poly, pnts)
-    # draw_voronoi(bnd_poly,pnts,optimized_vor)
+    draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh)
+    #k-means法
+    g = np.zeros((n,2))
+    eps = 1e-3
+    #do while 文を実装
+    while 1 :
+        for i in range(n):
+            g[i][0]= g_function(pnts,i,0,bnd_poly, gdf_mesh)
+            g[i][1]= g_function(pnts,i,1,bnd_poly, gdf_mesh)
+        print("g",g)
+        if norm(g,pnts,eps):
+            pnts = g
+            break
+        #そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
+        pnts = np.copy(g)
+        print("pnts",pnts)
+    #解の描画
+    print("optimized points:",pnts)
+    #print("cost:",cost_function(pnts))
+    optimized_vor = bounded_voronoi(bnd_poly, pnts)
+    draw_voronoi(bnd_poly,pnts,optimized_vor,gdf_mesh)
     
     return 0
     
@@ -108,11 +111,12 @@ def bounded_voronoi(bnd_poly, pnts):
         # print(i_cell)
         # 閉空間を考慮したボロノイ領域の頂点座標を格納、座標化したものはタプルのリストになっているのでリスト化？ここの意味はよく分かってない、また、Polygonは座標点を一点だけ重複して数えているのでそこは省いている
         vor_polys.append(list(i_cell.exterior.coords[:-1]))
-    # print(vor_polys)
     return vor_polys
 
 #ボロノイ図を描画する関数
-def draw_voronoi(bnd_poly,pnts,vor_polys):
+def draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh):
+    # import mesh
+    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
     # polygon to numpy
     bnd = np.array(bnd_poly.exterior.coords)
     # ボロノイ図の描画
@@ -120,7 +124,10 @@ def draw_voronoi(bnd_poly,pnts,vor_polys):
     ax = fig.add_subplot(111)
 
     # 母点
-    ax.scatter(pnts[:,0], pnts[:,1])
+    ax.scatter(pnts[:,0], pnts[:,1], label = "母点")
+    # メッシュ
+    np_coords = np.array(coords_population)
+    ax.scatter(np_coords[:,0], np_coords[:,1], label = "メッシュ")
 
     # ボロノイ領域
     poly_vor = PolyCollection(vor_polys, edgecolor="black",facecolors="None", linewidth = 1.0)
@@ -134,7 +141,7 @@ def draw_voronoi(bnd_poly,pnts,vor_polys):
     ax.set_xlim(xmin-0.01, xmax+0.01)
     ax.set_ylim(ymin-0.01, ymax+0.01)
     ax.set_aspect('equal')
-    
+    ax.legend()
     plt.show()
 
 #最適化問題をSLSQPで実装する。
@@ -160,28 +167,25 @@ def norm(g,y,eps):
     return 1
 
 #コスト関数はモンテカルロ法で近似、正規化定数は1とみなし、標本平均を計算しているだけ。
-def g_function(pnts,i,xy_index):
-    postsize = len(pnts)
-    #正規分布のパラメーター
-    mean = np.array([0,0])
-    cov = np.array([[1,0],[0,1]])
-    #領域境界の方法をもうすこし工夫したい
-    bnd = np.array([[-5,-5],[5,-5],[5,5],[-5,5]])
-    vor = bounded_voronoi(bnd, pnts)
+def g_function(pnts,i,xy_index,bnd_poly, gdf_mesh):
+    #メッシュデータ
+    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
+    #領域境界
+    vor = bounded_voronoi(bnd_poly, pnts)
     sigma = 0
     counter = 0
     tmp_sigma_upper = 0
     tmp_sigma_lower = 0
     polygon = Feature(geometry = Polygon(vor[i]))
-    for j in range(10000):
-        sample_point = np.random.multivariate_normal(mean, cov)
-        sample_point_judge = Feature(geometry = Point(list(sample_point)))
+    for j in range(len(coords_population)):
+        sample_point_judge = Feature(geometry = Point([coords_population[j][0], coords_population[j][1]]))
         if boolean_point_in_polygon(sample_point_judge, polygon):
-            tmp_sigma_upper += sample_point[xy_index] 
+            tmp_sigma_upper += coords_population[j][2]*coords_population[j][xy_index]
+            tmp_sigma_lower += coords_population[j][2]
             counter += 1
     if counter > 0:
         print("counter:",counter)
-        sigma += tmp_sigma_upper/counter
+        sigma += tmp_sigma_upper/tmp_sigma_lower
     return sigma
 
 
