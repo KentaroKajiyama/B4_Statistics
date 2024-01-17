@@ -1,5 +1,6 @@
 # coding: utf-8
 import numpy as np
+import geopandas as gpd
 from scipy.optimize import minimize
 import math
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -9,7 +10,9 @@ from shapely.geometry import Polygon
 from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
 from scipy.spatial.distance import cdist, euclidean
+import shp_to_mesh
 from matplotlib import rcParams
+rcParams['lines.markersize']= 1.0
 rcParams['font.family'] = 'sans-serif'
 rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 
@@ -25,6 +28,7 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・k-means法を利用
 ・サンプルは無限である
 ・正規化定数は１とみなす
+・サンプル点は互いに被らないバラバラなものとする
 ----------------------------------------------------------------
 プログラムの改善点
 ・一点一点独立に扱っているので統一性を持たせたい
@@ -38,21 +42,22 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 def main():
     #ポストの用意
     n=3
-    pnts = np.array([[-1.5,0],[1.5,0],[0,1.4]])
-    print(pnts)
-    #ボロノイ分割する領域
-    bnd = np.array([[-5,-5],[5,-5],[5,5],[-5,5]])
+    pnts = np.array([[139.77289, 35.72038],[139.7933,35.72189],[139.78465,35.70103]])
+    #ボロノイ分割する領域（台東区）bndはPolygon型
+    gdf_bound = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/data/人口分布データ/taito_polygon.shp")
+    gdf_mesh = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/台東区＿ユークリッド距離/ソースコード/台東区＿メッシュあり.shp")
+    print(gdf_mesh.dropna)
+    bnd_poly = gdf_bound["geometry"].iloc[0]
     #初期状態を図示
-    vor_polys = bounded_voronoi(bnd, pnts)
-    draw_voronoi(bnd,pnts,vor_polys)
+    vor_polys = bounded_voronoi(bnd_poly, pnts)
+    draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh)
     #k-means法
     g = np.zeros((n,2))
-    eps = 1e-3
+    eps = 1e-6
     #do while 文を実装
     while 1 :
         for i in range(n):
-            g[i] = g_function(pnts,i)
-        print("g",g)
+            g[i] = g_function(pnts, i, bnd_poly, gdf_mesh)
         if norm(g,pnts,eps):
             pnts = g
             break
@@ -61,22 +66,22 @@ def main():
         print("pnts",pnts)
     #解の描画
     print("optimized points:",pnts)
-    optimized_vor = bounded_voronoi(bnd, pnts)
-    draw_voronoi(bnd,pnts,optimized_vor)
+    optimized_vor = bounded_voronoi(bnd_poly, pnts)
+    draw_voronoi(bnd_poly,pnts,optimized_vor,gdf_mesh)
     
     return 0
     
 #有界なボロノイ図を計算する関数
-def bounded_voronoi(bnd, pnts):
+def bounded_voronoi(bnd_poly, pnts):
     
     # すべての母点のボロノイ領域を有界にするために，ダミー母点を3個追加
-    gn_pnts = np.concatenate([pnts, np.array([[50, 50], [50, -50], [-50, 0]])])
+    gn_pnts = np.concatenate([pnts, np.array([[139.84,35.8], [139.9,35.6], [139.6,35.695]])])
 
     # ボロノイ図の計算
     vor = Voronoi(gn_pnts)
 
     # 分割する領域をPolygonに
-    bnd_poly = Polygon(bnd)
+    # bnd_poly = Polygon(bnd)
 
     # 各ボロノイ領域をしまうリスト
     vor_polys = []
@@ -94,14 +99,20 @@ def bounded_voronoi(bnd, pnts):
     return vor_polys
 
 #ボロノイ図を描画する関数
-def draw_voronoi(bnd,pnts,vor_polys):
+def draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh):
+    # import mesh
+    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
+    # polygon to numpy
+    bnd = np.array(bnd_poly.exterior.coords)
     # ボロノイ図の描画
     fig = plt.figure(figsize=(7, 6))
     ax = fig.add_subplot(111)
 
     # 母点
-    ax.scatter(pnts[:,0], pnts[:,1])
-
+    ax.scatter(pnts[:,0], pnts[:,1], label = "母点")
+    # メッシュ
+    np_coords = np.array(coords_population)
+    ax.scatter(np_coords[:,0], np_coords[:,1], label = "メッシュ")
     # ボロノイ領域
     poly_vor = PolyCollection(vor_polys, edgecolor="black",facecolors="None", linewidth = 1.0)
     ax.add_collection(poly_vor)
@@ -111,10 +122,10 @@ def draw_voronoi(bnd,pnts,vor_polys):
     ymin = np.min(bnd[:,1])
     ymax = np.max(bnd[:,1])
 
-    ax.set_xlim(xmin-0.1, xmax+0.1)
-    ax.set_ylim(ymin-0.1, ymax+0.1)
+    ax.set_xlim(xmin-0.01, xmax+0.01)
+    ax.set_ylim(ymin-0.01, ymax+0.01)
     ax.set_aspect('equal')
-    
+    ax.legend()
     plt.show()
     
     # str = input()
@@ -143,57 +154,57 @@ def norm(g,y,eps):
     return 1
 
 #コスト関数はモンテカルロ法で近似、正規化定数は1とみなし、標本平均を計算しているだけ。
-def g_function(pnts,i):
-    postsize = len(pnts)
+def g_function(pnts, i, bnd_poly, gdf_mesh):
+    #メッシュデータ
+    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
+    #領域境界
+    vor = bounded_voronoi(bnd_poly, pnts)
     answer = pnts[i]
-    #正規分布のパラメーター
-    mean = np.array([0,0])
-    cov = np.array([[2.25,0],[0,1]])
-    #領域境界の方法をもうすこし工夫したい
-    bnd = np.array([[-5,-5],[5,-5],[5,5],[-5,5]])
-    vor = bounded_voronoi(bnd, pnts)
-    sigma = 0
     counter = 0
-    tmp_sigma_upper = 0
-    tmp_sigma_lower = 0
     polygon = Feature(geometry = Polygon(vor[i]))
-    judged_points = []
-    for j in range(10000):
-        sample_point = list(np.random.multivariate_normal(mean, cov))
-        sample_point_judge = Feature(geometry = Point(sample_point))
+    sample_points = []
+    mesh_weights = []
+    for j in range(len(coords_population)):
+        sample_point_judge = Feature(geometry = Point([coords_population[j][0], coords_population[j][1]]))
         if boolean_point_in_polygon(sample_point_judge, polygon):
-            judged_points.append(sample_point)
+            #ボロノイ領域に入っていればリストにnp.arrayのベクトルを追加
+            sample_points.append(np.array([coords_population[j][0], coords_population[j][1]]))
+            mesh_weights.append(coords_population[j][2])
             counter += 1
     if counter > 0:
         print("counter:",counter)
-        answer = geometric_median(np.array(judged_points))
+        answer = geometric_median(np.array(sample_points), np.array(mesh_weights))
     return answer
 
 #geometric medianの計算
-
-def geometric_median(X, eps=1e-5):
+def geometric_median(X, mesh_weight, eps=1e-5):
+    #初期点は平均値から始める
     y = np.mean(X, 0)
-
+    mesh_weight = mesh_weight.reshape([-1,1])
+    print(mesh_weight.shape)
     while True:
         D = cdist(X, [y])
         nonzeros = (D != 0)[:, 0]
-
-        Dinv = 1 / D[nonzeros]
+        zero = (D == 0)[:, 0]
+        Dinv = mesh_weight[nonzeros] / D[nonzeros]
         Dinvs = np.sum(Dinv)
         W = Dinv / Dinvs
         T = np.sum(W * X[nonzeros], 0)
 
         num_zeros = len(X) - np.sum(nonzeros)
+        # yとx1,...,xmが一つも被っていない場合
         if num_zeros == 0:
             y1 = T
+        # yとx1,...,xmが全て被っている→つまり全部同じ点
         elif num_zeros == len(X):
             return y
+        # 1点だけ被っている（全てのサンプル点が異なる座標を持つという仮定を入れている）
         else:
             R = (T - y) * Dinvs
             r = np.linalg.norm(R)
-            rinv = 0 if r == 0 else num_zeros/r
+            rinv = 0 if r == 0 else mesh_weight[zero]/r
             y1 = max(0, 1-rinv)*T + min(1, rinv)*y
-
+        # 閾値を超えた時に終了
         if euclidean(y, y1) < eps:
             return y1
 

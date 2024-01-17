@@ -52,7 +52,7 @@ def main():
     draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh)
     #k-means法
     g = np.zeros((n,2))
-    eps = 1e-3
+    eps = 1e-6
     #do while 文を実装
     while 1 :
         for i in range(n):
