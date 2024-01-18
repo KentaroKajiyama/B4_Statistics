@@ -46,7 +46,6 @@ def main():
     #ボロノイ分割する領域（台東区）bndはPolygon型
     gdf_bound = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/data/人口分布データ/taito_polygon.shp")
     gdf_mesh = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/台東区＿ユークリッド距離/ソースコード/台東区＿メッシュあり.shp")
-    print(gdf_mesh.dropna)
     bnd_poly = gdf_bound["geometry"].iloc[0]
     #初期状態を図示
     vor_polys = bounded_voronoi(bnd_poly, pnts)
@@ -104,6 +103,7 @@ def draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh):
     coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
     # polygon to numpy
     bnd = np.array(bnd_poly.exterior.coords)
+    print(bnd)
     # ボロノイ図の描画
     fig = plt.figure(figsize=(7, 6))
     ax = fig.add_subplot(111)

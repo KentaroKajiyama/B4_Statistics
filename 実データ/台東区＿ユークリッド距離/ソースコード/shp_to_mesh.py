@@ -66,7 +66,6 @@ def get_latlon(meshCode):
     if len(meshCode) == 10:
         lat += 1 * 2 / 3 / 8 / 10 / 2 / 2 / 2
         lon += 1 / 8 / 10 / 2 / 2 / 2
-    
     return lon, lat
 
 def shp_to_meshCoords(gdf):

@@ -1,15 +1,13 @@
 # coding: utf-8
 import numpy as np
 import geopandas as gpd
-from scipy.optimize import minimize
 import math
-from scipy.spatial import Voronoi, voronoi_plot_2d
+from scipy.spatial import Voronoi
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 from shapely.geometry import Polygon
 from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
-from scipy.spatial.distance import cdist, euclidean
 import shp_to_mesh
 from matplotlib import rcParams
 rcParams['lines.markersize']=1.0
@@ -19,6 +17,7 @@ rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio'
 """
 問題設定① 
 n個のポスト配置、最適な配置は総平均（期待値）で評価する。
+東京２３区で実験
 ----------------------------------------------------------------
 仮定
 ・10×10の正方形領域
@@ -42,7 +41,7 @@ def main():
     #ポストの用意
     n=3
     pnts = np.array([[139.77289, 35.72038],[139.7933,35.72189],[139.78465,35.70103]])
-    #ボロノイ分割する領域（台東区）bndはPolygon型
+    #ボロノイ分割する領域（東京２３区）bndはPolygon型
     gdf_bound = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/data/人口分布データ/taito_polygon.shp")
     gdf_mesh = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/台東区＿ユークリッド距離/ソースコード/台東区＿メッシュあり.shp")
     print(gdf_mesh.dropna)
