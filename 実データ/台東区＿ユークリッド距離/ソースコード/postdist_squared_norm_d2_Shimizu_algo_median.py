@@ -49,24 +49,25 @@ def main():
     bnd_poly = gdf_bound["geometry"].iloc[0]
     #初期状態を図示
     vor_polys = bounded_voronoi(bnd_poly, pnts)
+    print("vor_polys", len(vor_polys))
     draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh)
-    #k-means法
-    g = np.zeros((n,2))
-    eps = 1e-6
-    #do while 文を実装
-    while 1 :
-        for i in range(n):
-            g[i] = g_function(pnts, i, bnd_poly, gdf_mesh)
-        if norm(g,pnts,eps):
-            pnts = g
-            break
-        #そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
-        pnts = np.copy(g)
-        print("pnts",pnts)
-    #解の描画
-    print("optimized points:",pnts)
-    optimized_vor = bounded_voronoi(bnd_poly, pnts)
-    draw_voronoi(bnd_poly,pnts,optimized_vor,gdf_mesh)
+    # #k-means法
+    # g = np.zeros((n,2))
+    # eps = 1e-6
+    # #do while 文を実装
+    # while 1 :
+    #     for i in range(n):
+    #         g[i] = g_function(pnts, i, bnd_poly, gdf_mesh)
+    #     if norm(g,pnts,eps):
+    #         pnts = g
+    #         break
+    #     #そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
+    #     pnts = np.copy(g)
+    #     print("pnts",pnts)
+    # #解の描画
+    # print("optimized points:",pnts)
+    # optimized_vor = bounded_voronoi(bnd_poly, pnts)
+    # draw_voronoi(bnd_poly,pnts,optimized_vor,gdf_mesh)
     
     return 0
     
@@ -103,7 +104,6 @@ def draw_voronoi(bnd_poly,pnts,vor_polys,gdf_mesh):
     coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
     # polygon to numpy
     bnd = np.array(bnd_poly.exterior.coords)
-    print(bnd)
     # ボロノイ図の描画
     fig = plt.figure(figsize=(7, 6))
     ax = fig.add_subplot(111)

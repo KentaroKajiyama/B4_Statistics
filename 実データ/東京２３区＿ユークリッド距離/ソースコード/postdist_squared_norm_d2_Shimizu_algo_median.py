@@ -31,6 +31,8 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・正規化定数は１とみなす
 ・サンプル点は互いに被らないバラバラなものとする
 ・行政区域は気にしない
+・母点がないようなボロノイ領域は一旦無視する
+・ボロノイ領域の一つが複数に別れる場合、medianを取ると領域内に収まらない可能性がある。
 ----------------------------------------------------------------
 プログラムの改善点
 ・一点一点独立に扱っているので統一性を持たせたい
@@ -38,6 +40,7 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・可視化になるべく時間がかからないようにしたい
 ・なぜか45度回転するのでそこのデバッグ＋分布の可視化をやめる
 ・np.array2dの可視化の際の座標配置は(y,x)の順番になるからそこが関係している可能性はある。
+・コスト関数の計算時に明らかに無視できるメッシュがあるのに律儀に読み込んでいるのは計算量の無駄
 """
 
 
@@ -50,25 +53,19 @@ def main():
     #ボロノイ分割する領域（台東区）bndはPolygon型
     gdf_bound = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/東京２３区＿ユークリッド距離/ソースコード/tokyo23_polygon.shp")
     gdf_mesh = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/東京２３区＿ユークリッド距離/ソースコード/メッシュあり東京２３区人口データ付き.shp").fillna(0)
-    # bnd_polys bnd_polyが複数に
+    # bnd_polys bnd_polyの複数形
     bnd_polys = unary_union(gdf_bound["geometry"])
-    vor_polys_box = []
-    vor_poly_counter_box = []
-    bnds = []
     #初期状態を図示
-    for bnd_poly in bnd_polys.geoms:
-        vor_polys, vor_poly_counter_box = bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box)
-        vor_polys_box.append(vor_polys)
-        #終わったら削除
-        bnds.append(np.array(bnd_poly.exterior.coords))
-    draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh, vor_poly_counter_box)
+    vor_polys_box, vor_poly_counter_box, bnds = bounded_voronoi_mult(bnd_polys, pnts)
+    draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh)
     #k-means法
     g = np.zeros((n,2))
     eps = 1e-6
     #do while 文を実装
     while 1 :
+        vor_poly_counter = 0
         for i in range(n):
-            g[i] = g_function(pnts, i, bnd_poly, gdf_mesh)
+            g[i], vor_poly_counter = g_function(pnts, i, bnd_polys, gdf_mesh, vor_poly_counter)
         if norm(g,pnts,eps):
             pnts = g
             break
@@ -77,11 +74,24 @@ def main():
         print("pnts",pnts)
     #解の描画
     print("optimized points:",pnts)
-    optimized_vor = bounded_voronoi(bnd_poly, pnts)
-    draw_voronoi(bnd_poly,pnts,optimized_vor,gdf_mesh)
+    optimized_vor_box, _, _ = bounded_voronoi_mult(bnd_polys, pnts)
+    draw_voronoi(bnd_polys,pnts,optimized_vor_box,gdf_mesh)
     
     return 0
-    
+
+def bounded_voronoi_mult(bnd_polys, pnts):
+    vor_polys_box = []
+    vor_poly_counter_box = []
+    bnds = []
+    #初期状態を図示
+    for bnd_poly in bnd_polys.geoms:
+        vor_polys, vor_poly_counter_box = bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box)
+        for vor_poly in vor_polys:
+            vor_polys_box.append(vor_poly)
+        #終わったら削除
+        bnds.append(np.array(bnd_poly.exterior.coords))
+    return vor_polys_box, vor_poly_counter_box, bnds
+
 #有界なボロノイ図を計算する関数
 def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
     # 母点がそもそも領域内に含まれているか検証する
@@ -93,7 +103,10 @@ def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
         pnts_judge = Feature(geometry = Point([pnts[i][0], pnts[i][1]]))
         if boolean_point_in_polygon(pnts_judge, Feature(geometry=bnd_poly)):
             pnts_included_counter += 1
-    if pnts_included_counter <= 1:
+    if pnts_included_counter == 0:
+        vor_poly_counter_box.append(vor_counter)
+        return [list(bnd_poly.exterior.coords[:-1])], vor_poly_counter_box
+    elif pnts_included_counter == 1:
         vor_counter += 1
         vor_poly_counter_box.append(vor_counter)
         return [list(bnd_poly.exterior.coords[:-1])], vor_poly_counter_box
@@ -133,7 +146,7 @@ def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
     return vor_polys, vor_poly_counter_box
 
 #ボロノイ図を描画する関数
-def draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh, vor_poly_counter_box):
+def draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh):
     # import mesh
     coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
     xmin = pnts[0][0]
@@ -157,9 +170,8 @@ def draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh, vor_poly_counter_box):
     np_coords = np.array(coords_population)
     ax.scatter(np_coords[:,0], np_coords[:,1], label = "メッシュ")
     # ボロノイ領域
-    for vor_polys in vor_polys_box:
-        poly_vor = PolyCollection(vor_polys, edgecolor="black",facecolors="None", linewidth = 1.0)
-        ax.add_collection(poly_vor)
+    poly_vor = PolyCollection(vor_polys_box, edgecolor="black",facecolors="None", linewidth = 1.0)
+    ax.add_collection(poly_vor)
     # 描画の範囲設定
     ax.set_xlim(xmin-0.01, xmax+0.01)
     ax.set_ylim(ymin-0.01, ymax+0.01)
@@ -190,40 +202,53 @@ def norm(g,y,eps):
     return 1
 
 #コスト関数はモンテカルロ法で近似、正規化定数は1とみなし、標本平均を計算しているだけ。
-def g_function(pnts, i, bnd_poly, gdf_mesh):
+def g_function(pnts, i, bnd_polys, gdf_mesh, vor_poly_counter):
     #メッシュデータ
     coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
     #領域境界
-    vor = bounded_voronoi(bnd_poly, pnts)
+    vor_poly_box, vor_poly_counter_box, bnds = bounded_voronoi_mult(bnd_polys, pnts)
+    while vor_poly_counter_box[vor_poly_counter] == 0:
+        vor_poly_counter += 1
     answer = pnts[i]
+    vor_poly_counter_save = vor_poly_counter
     counter = 0
-    polygon = Feature(geometry = Polygon(vor[i]))
-    sample_points = []
-    mesh_weights = []
-    for j in range(len(coords_population)):
-        sample_point_judge = Feature(geometry = Point([coords_population[j][0], coords_population[j][1]]))
-        if boolean_point_in_polygon(sample_point_judge, polygon):
-            #ボロノイ領域に入っていればリストにnp.arrayのベクトルを追加
-            sample_points.append(np.array([coords_population[j][0], coords_population[j][1]]))
-            mesh_weights.append(coords_population[j][2])
-            counter += 1
+    for vor_poly_num in range(vor_poly_counter_box[vor_poly_counter]):
+        polygon = Feature(geometry = Polygon(vor_poly_box[vor_poly_counter_save]))
+        sample_points = []
+        mesh_weights = []
+        for j in range(len(coords_population)):
+            sample_point_judge = Feature(geometry = Point([coords_population[j][0], coords_population[j][1]]))
+            if boolean_point_in_polygon(sample_point_judge, polygon):
+                #ボロノイ領域に入っていればリストにnp.arrayのベクトルを追加
+                sample_points.append(np.array([coords_population[j][0], coords_population[j][1]]))
+                mesh_weights.append(coords_population[j][2])
+                counter += 1
+        vor_poly_counter_save += 1
     if counter > 0:
         print("counter:",counter)
+        print("length_sample_points:", len(sample_points))
         answer = geometric_median(np.array(sample_points), np.array(mesh_weights))
-    return answer
+        if answer[0] == "None":
+            answer = pnts[i]
+    vor_poly_counter += 1
+    return answer, vor_poly_counter
 
 #geometric medianの計算
 def geometric_median(X, mesh_weight, eps=1e-5):
     #初期点は平均値から始める
+    if X.size == 0:
+        return ["None"]
     y = np.mean(X, 0)
     mesh_weight = mesh_weight.reshape([-1,1])
-    print(mesh_weight.shape)
     while True:
         D = cdist(X, [y])
         nonzeros = (D != 0)[:, 0]
         zero = (D == 0)[:, 0]
         Dinv = mesh_weight[nonzeros] / D[nonzeros]
         Dinvs = np.sum(Dinv)
+        #重みが0のものにだけ当たっちゃった場合
+        if Dinvs == 0:
+            return y
         W = Dinv / Dinvs
         T = np.sum(W * X[nonzeros], 0)
 
@@ -248,6 +273,11 @@ def geometric_median(X, mesh_weight, eps=1e-5):
 
 if __name__ == '__main__':
     main()
+    # a = np.array([[2,3],[3,4],[8,5],[3,5]])
+    # a_0 = np.array([[]])
+    # b = np.array([1,1,1,1])
+    # print("mean:", np.mean(a_0,0))
+    # print("geometric_median:",geometric_median(a_0,b))
     
     
 
