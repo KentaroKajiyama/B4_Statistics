@@ -1,4 +1,5 @@
 # coding: utf-8
+import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -12,6 +13,8 @@ from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
 from scipy.spatial.distance import cdist, euclidean
 import shp_to_mesh
+from pathlib import Path
+from datetime import datetime
 from matplotlib import rcParams
 rcParams['lines.markersize']= 1.0
 rcParams['font.family'] = 'sans-serif'
@@ -47,36 +50,93 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 def main():
     #ポストの用意
     n=23
+    # ディレクトリの指定 東京２３区ユークリッド距離
+    parent = Path(__file__).resolve().parent.parent
+    # ディレクトリの指定 実験データ東京２３区１乗
+    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.joinpath("実験データ/東京２３区/１乗")
+    # 現在の日時を取得
+    now = datetime.now()
+    # 日時を文字列としてフォーマット
+    formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
+    # 保存用ディレクトリの指定
+    experimentPath = experimentPath.joinpath(formatted_now)
+    # 保存用ディレクトリの作成
+    os.mkdir(experimentPath) 
+    # 結果の保存先
+    resultfile = "result_Median_"+formatted_now+".txt"
+    with open(experimentPath.joinpath(resultfile), "a") as f:
+        f.write(formatted_now + "\n")
     # 区役所名を除外して、緯度と経度のみの配列を作成
-    df = pd.read_csv("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/東京２３区＿ユークリッド距離/初期状態/tokyo_23_wards_offices_utf8.csv")
+    df = pd.read_csv(parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
     pnts = df[['経度', '緯度']].to_numpy()
     #ボロノイ分割する領域（台東区）bndはPolygon型
-    gdf_bound = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/東京２３区＿ユークリッド距離/ソースコード/tokyo23_polygon.shp")
-    gdf_mesh = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/東京２３区＿ユークリッド距離/ソースコード/メッシュあり東京２３区人口データ付き.shp").fillna(0)
+    gdf_bound = gpd.read_file(parent.joinpath("ソースコード/tokyo23_polygon.shp"))
+    gdf_mesh_origin = gpd.read_file(parent.joinpath("ソースコード/メッシュあり東京２３区人口データ付き.shp")).fillna(0)
+    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh_origin)
     # bnd_polys bnd_polyの複数形
     bnd_polys = unary_union(gdf_bound["geometry"])
+    # costの格納
+    cost_record = []
+    # 取り込んだMesh数の記録
+    mesh_sum_record = []
     #初期状態を図示
-    vor_polys_box, vor_poly_counter_box, bnds = bounded_voronoi_mult(bnd_polys, pnts)
-    draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh)
+    vor_polys_box, cost = cost_function(pnts, bnd_polys, coords_population)
+    cost_record.append(cost)
+    with open(experimentPath.joinpath(resultfile), "a") as f:
+        f.write("初期母点\n")
+        np.savetxt(f, pnts, fmt = '%f')
+        f.write("取り込んだ総メッシュ数:"+str(len(coords_population))+"\n")
     #k-means法
     g = np.zeros((n,2))
     eps = 1e-6
+    # ここで最大の繰り返し回数を変更する
+    MaxIterations = 100
     #do while 文を実装
+    while_counter = 0
+    draw_voronoi(bnd_polys,pnts,vor_polys_box,coords_population,formatted_now, while_counter, experimentPath)
     while 1 :
         vor_poly_counter = 0
+        mesh_counter_sum = 0
+        mesh_counter_box = []
         for i in range(n):
-            g[i], vor_poly_counter = g_function(pnts, i, bnd_polys, gdf_mesh, vor_poly_counter)
-        if norm(g,pnts,eps):
+            g[i], vor_poly_counter, mesh_counter = g_function(pnts, i, bnd_polys, coords_population, vor_poly_counter)
+            mesh_counter_sum += mesh_counter
+            mesh_counter_box.append(mesh_counter)
+        if norm(g, pnts, eps, experimentPath, resultfile):
             pnts = g
             break
-        #そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
+        elif while_counter == MaxIterations:
+            pnts = np.copy(g)
+            break
+        # そのままgを渡してしまうと参照渡しとなってしまう？numpy.ndarrayの仕様がわからない
         pnts = np.copy(g)
-        print("pnts",pnts)
+        while_counter += 1
+        vor_polys_box, cost = cost_function(pnts, bnd_polys, coords_population)
+        cost_record.append(cost)
+        mesh_sum_record.append(mesh_counter_sum)
+        with open(experimentPath.joinpath(resultfile), "a") as f:
+            f.write(str(while_counter)+"回目の母点\n")
+            np.savetxt(f, pnts, fmt = '%f')
+            f.write(str(while_counter)+"回目の取り込み総メッシュ数: "+str(mesh_counter_sum)+"\n")
+            f.write(str(while_counter)+"回目の取り込み各メッシュ数\n")
+            np.savetxt(f, np.array(mesh_counter_box).reshape(1,len(mesh_counter_box)),fmt= "%d")
+        draw_voronoi(bnd_polys,pnts,vor_polys_box,coords_population,formatted_now, while_counter, experimentPath)
     #解の描画
-    print("optimized points:",pnts)
-    optimized_vor_box, _, _ = bounded_voronoi_mult(bnd_polys, pnts)
-    draw_voronoi(bnd_polys,pnts,optimized_vor_box,gdf_mesh)
-    
+    optimized_vor_box, cost = cost_function(pnts, bnd_polys, coords_population)
+    cost_record.append(cost)
+    mesh_sum_record.append(mesh_counter_sum)
+    draw_voronoi(bnd_polys, pnts, optimized_vor_box, coords_population,formatted_now, while_counter, experimentPath)
+    draw_cost(cost_record, formatted_now, experimentPath)
+    draw_mesh_sum(mesh_sum_record, formatted_now, experimentPath)
+    with open(experimentPath.joinpath(resultfile), "a") as f:
+            f.write(str(while_counter+1)+"回目の母点or最適点\n")
+            np.savetxt(f, pnts, fmt = '%f')
+            f.write(str(while_counter+1)+"回目の取り込み総メッシュ数: "+str(mesh_counter_sum)+"\n")
+            f.write(str(while_counter+1)+"回目の取り込み各メッシュ数\n")
+            np.savetxt(f, np.array(mesh_counter_box).reshape(1,len(mesh_counter_box)), fmt= "%d")
+            f.write("\n")
+            f.write("cost record\n")
+            np.savetxt(f, np.array(cost_record), fmt = '%f')
     return 0
 
 def bounded_voronoi_mult(bnd_polys, pnts):
@@ -128,27 +188,15 @@ def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
             vor_counter += 1
             vor_polys.append(list(i_cells.exterior.coords[:-1]))
             vor_poly_counter_box.append(vor_counter)
-            # gdf = gpd.GeoDataFrame({'geometry': [i_cells]})
-            # print("Polygon")
-            # print(i_cells)
-            # gdf.plot()
-            # plt.show()
         else :
             for i_cell in i_cells.geoms :
                 vor_counter += 1
                 vor_polys.append(list(i_cell.exterior.coords[:-1]))
             vor_poly_counter_box.append(vor_counter)
-            # gdf = gpd.GeoDataFrame({'geometry': [i_cell]})
-            # print("MultiPolygon")
-            # print(i_cell)
-            # gdf.plot()
-            # plt.show()
     return vor_polys, vor_poly_counter_box
 
 #ボロノイ図を描画する関数
-def draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh):
-    # import mesh
-    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
+def draw_voronoi(bnd_polys,pnts,vor_polys_box,coords_population, formatted_now, number, experimentPath):
     xmin = pnts[0][0]
     xmax = pnts[0][0]
     ymin = pnts[0][1]
@@ -165,7 +213,7 @@ def draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh):
     ax = fig.add_subplot(111)
 
     # 母点
-    ax.scatter(pnts[:,0], pnts[:,1], label = "母点")
+    ax.scatter(pnts[:,0], pnts[:,1], label = "母点", s=10)
     # メッシュ
     np_coords = np.array(coords_population)
     ax.scatter(np_coords[:,0], np_coords[:,1], label = "メッシュ")
@@ -177,34 +225,29 @@ def draw_voronoi(bnd_polys,pnts,vor_polys_box,gdf_mesh):
     ax.set_ylim(ymin-0.01, ymax+0.01)
     ax.set_aspect('equal')
     ax.legend()
-    plt.show()
+    filename = experimentPath.joinpath(str(number)+"回目ボロノイ図_"+formatted_now+".png")
+    plt.savefig(filename)
+    plt.clf()
+    # plt.show()
 
 #最適化問題をSLSQPで実装する。
 
-#まずは距離関数を定義する
-def dist(x,y,px,py):
-    return math.sqrt((x-px)**2 + (y-py)**2)
-
 #whileループの判定関数
-def norm(g,y,eps):
-    print("g",g)
-    print("y",y)
-    print("eps",eps)
+def norm(g, y, eps, experimentPath, resultfile):
     p = len(g)
     n = len(g[0])
     for i in range(p):
         sum = 0
         for j in range(n):
-            sum += (g[i][j]-y[i][j])**2
-            print("sum",sum)
+            sum = (g[i][j]-y[i][j])**2
+        with open(experimentPath.joinpath(resultfile), "a") as f:
+            f.write("第"+str(i+1)+"点の移動距離:"+str(sum)+"\n")
         if sum > eps:
             return 0
     return 1
 
 #コスト関数はモンテカルロ法で近似、正規化定数は1とみなし、標本平均を計算しているだけ。
-def g_function(pnts, i, bnd_polys, gdf_mesh, vor_poly_counter):
-    #メッシュデータ
-    coords_population = shp_to_mesh.shp_to_meshCoords(gdf_mesh)
+def g_function(pnts, i, bnd_polys, coords_population, vor_poly_counter):
     #領域境界
     vor_poly_box, vor_poly_counter_box, bnds = bounded_voronoi_mult(bnd_polys, pnts)
     while vor_poly_counter_box[vor_poly_counter] == 0:
@@ -212,10 +255,10 @@ def g_function(pnts, i, bnd_polys, gdf_mesh, vor_poly_counter):
     answer = pnts[i]
     vor_poly_counter_save = vor_poly_counter
     counter = 0
+    sample_points = []
+    mesh_weights = []
     for vor_poly_num in range(vor_poly_counter_box[vor_poly_counter]):
         polygon = Feature(geometry = Polygon(vor_poly_box[vor_poly_counter_save]))
-        sample_points = []
-        mesh_weights = []
         for j in range(len(coords_population)):
             sample_point_judge = Feature(geometry = Point([coords_population[j][0], coords_population[j][1]]))
             if boolean_point_in_polygon(sample_point_judge, polygon):
@@ -225,16 +268,15 @@ def g_function(pnts, i, bnd_polys, gdf_mesh, vor_poly_counter):
                 counter += 1
         vor_poly_counter_save += 1
     if counter > 0:
-        print("counter:",counter)
-        print("length_sample_points:", len(sample_points))
         answer = geometric_median(np.array(sample_points), np.array(mesh_weights))
         if answer[0] == "None":
             answer = pnts[i]
     vor_poly_counter += 1
-    return answer, vor_poly_counter
+    return answer, vor_poly_counter, counter
 
 #geometric medianの計算
 def geometric_median(X, mesh_weight, eps=1e-5):
+    print("func start")
     #初期点は平均値から始める
     if X.size == 0:
         return ["None"]
@@ -265,19 +307,64 @@ def geometric_median(X, mesh_weight, eps=1e-5):
             r = np.linalg.norm(R)
             rinv = 0 if r == 0 else mesh_weight[zero]/r
             y1 = max(0, 1-rinv)*T + min(1, rinv)*y
-        # 閾値を超えた時に終了
+        # 閾値を下回った時に終了
+        print("y1:",y1)
+        print("y:",y)
         if euclidean(y, y1) < eps:
             return y1
 
         y = y1
 
+#まずは距離関数を定義する
+def dist(x,y,px,py):
+    return math.sqrt((x-px)**2 + (y-py)**2)
+
+#コスト関数
+def cost_function(pnts, bnd_polys, coords_population):
+    sum = 0
+    vor_poly_counter = 0
+    counter = 0
+    #領域境界
+    vor_poly_box, vor_poly_counter_box, bnds = bounded_voronoi_mult(bnd_polys, pnts)
+    for i in range(len(pnts)):
+        tmp_sigma_upper = 0
+        tmp_sigma_lower = 0
+        while vor_poly_counter < len(vor_poly_counter_box) and vor_poly_counter_box[vor_poly_counter] == 0 :
+            vor_poly_counter += 1
+        if vor_poly_counter < len(vor_poly_counter_box):
+            for vor_poly_num in range(vor_poly_counter_box[vor_poly_counter]):
+                polygon = Feature(geometry = Polygon(vor_poly_box[vor_poly_counter]))
+                for j in range(len(coords_population)):
+                    sample_point_judge = Feature(geometry = Point([coords_population[j][0], coords_population[j][1]]))
+                    if boolean_point_in_polygon(sample_point_judge, polygon):
+                        #ボロノイ領域に入っていれば和を計算
+                        tmp_sigma_upper += coords_population[j][2]*(dist(coords_population[j][0],coords_population[j][1],pnts[i][0],pnts[i][1]))
+                        tmp_sigma_lower += coords_population[j][2]
+                        counter += 1
+                vor_poly_counter += 1
+        if counter > 0 and tmp_sigma_lower > 0:
+            sum += tmp_sigma_upper/tmp_sigma_lower
+    return vor_poly_box, sum
+
+# コストの描画
+def draw_cost(cost_record,formatted_now, experimentPath):
+    plt.plot(cost_record)
+    plt.xlabel("n(回)")
+    plt.ylabel("COST")
+    filename = experimentPath.joinpath("CostRecord_"+formatted_now+".png")
+    plt.savefig(filename)
+    # plt.show()
+
+# メッシュ数の記録
+def draw_mesh_sum(mesh_sum_record,formatted_now, experimentPath):
+    plt.plot(mesh_sum_record)
+    plt.xlabel("n(回)")
+    plt.ylabel("総メッシュ数")
+    filename = experimentPath.joinpath("MeshSumRecord_"+formatted_now+".png")
+    plt.savefig(filename)
+    # plt.show()
+
 if __name__ == '__main__':
     main()
-    # a = np.array([[2,3],[3,4],[8,5],[3,5]])
-    # a_0 = np.array([[]])
-    # b = np.array([1,1,1,1])
-    # print("mean:", np.mean(a_0,0))
-    # print("geometric_median:",geometric_median(a_0,b))
-    
     
 

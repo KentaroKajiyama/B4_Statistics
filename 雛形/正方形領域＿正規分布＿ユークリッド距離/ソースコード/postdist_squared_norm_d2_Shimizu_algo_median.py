@@ -116,9 +116,6 @@ def draw_voronoi(bnd,pnts,vor_polys):
     ax.set_aspect('equal')
     
     plt.show()
-    
-    # str = input()
-    # plt.savefig(str+".png")
 
 #最適化問題をSLSQPで実装する。
 
