@@ -59,7 +59,7 @@ def main():
     # 保存用ディレクトリの作成
     os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_Median_"+formatted_now+".txt"
+    resultfile = "result_Mean_"+formatted_now+".txt"
     with open(experimentPath.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
     # 区役所名を除外して、緯度と経度のみの配列を作成
