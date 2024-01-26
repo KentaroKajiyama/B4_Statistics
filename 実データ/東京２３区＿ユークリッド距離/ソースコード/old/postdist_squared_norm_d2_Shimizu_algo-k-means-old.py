@@ -3,8 +3,9 @@ import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from scipy.optimize import minimize
 import math
-from scipy.spatial import Voronoi
+from scipy.spatial import Voronoi, voronoi_plot_2d
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 from shapely.geometry import Polygon
@@ -13,6 +14,7 @@ from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
 from scipy.spatial.distance import cdist, euclidean
 import shp_to_mesh
+import means_medians 
 from pathlib import Path
 from datetime import datetime
 from matplotlib import rcParams
@@ -47,7 +49,7 @@ def main():
     n = 23
     # ディレクトリの指定 東京２３区ユークリッド距離
     parent = Path(__file__).resolve().parent.parent
-    # ディレクトリの指定 実験データ東京２３区２乗
+    # ディレクトリの指定 実験データ東京２３区１乗
     experimentPath = Path(__file__).resolve().parent.parent.parent.parent.joinpath("実験データ/東京２３区/２乗")
     # 現在の日時を取得
     now = datetime.now()
@@ -58,7 +60,7 @@ def main():
     # 保存用ディレクトリの作成
     os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_Mean_"+formatted_now+".csv"
+    resultfile = "result_Mean_"+formatted_now+".txt"
     with open(experimentPath.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
     # 区役所名を除外して、緯度と経度のみの配列を作成．これをまずは初期点とする．
@@ -76,7 +78,7 @@ def main():
     vor_polys_box = bounded_voronoi_mult(bnd_polys, pnts)
     draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
     # 初期状態のコストを計算
-    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = False)
+    cost = means_medians.cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True)
     cost_record.append(cost)
     # 初期点の記録
     with open(experimentPath.joinpath(resultfile), "a") as f:
@@ -86,7 +88,7 @@ def main():
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, cost = means_medians.weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True)
     # 解の描画
     vor_polys_box = bounded_voronoi_mult(bnd_polys, optimized_pnts)
     draw_voronoi(bnd_polys, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
@@ -202,84 +204,16 @@ def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_no
     plt.savefig(filename)
     plt.clf()
 
-def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None,resultfile = None):
-    # データポイントの数
-    n_samples = X.shape[0]
-    # ランダムに初期クラスタ中心を選択
-    if initial:
-        centroids = pnts
-    else:
-        random_indices = np.random.choice(n_samples, n_clusters, replace=False)
-        centroids = X[random_indices]
-
-    #　コストの推移の確認のため描画するかしないか場合分け
-    if config:
-        cost_record = []
-        for _ in range(max_iter):
-            # クラスタの割り当て
-            distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
-            labels = np.argmin(distances, axis=0)
-            # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
-
-            # 収束チェック
-            if np.all(centroids == new_centroids):
-                break
-
-            centroids = new_centroids
-            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = False))
-        with open(experimentPath.joinpath(resultfile), "a") as f:
-            f.write("cost record in iterations\n")
-            np.savetxt(f, np.array(cost_record), fmt = '%f')
-        draw_cost(cost_record, formatted_now, experimentPath)
-    else:
-        for _ in range(max_iter):
-            # クラスタの割り当て
-            distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
-            labels = np.argmin(distances, axis=0)
-            # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
-            # 収束チェック
-            if np.all(centroids == new_centroids):
-                break
-        centroids = new_centroids
-
-    # コスト関数（目的関数）の計算
-    cost_function_value = 0
-    for i in range(len(X)):
-        cluster_center = centroids[labels[i]]
-        cost_function_value += weights[i]*np.sum((X[i] - cluster_center)**2)
-    
-    return centroids, labels, cost_function_value
-
-# コスト関数単体
-def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = False):
-    # labelがない場合
-    if non_claster:
-        # クラスタの割り当て
-        distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
-        labels = np.argmin(distances, axis=0)
-    cost_function_value = 0
-    if median:
-        for i in range(len(X)):
-            cluster_center = centroids[labels[i]]
-            cost_function_value += weights[i]*math.sqrt(np.sum((X[i] - cluster_center) ** 2))
-    else:
-        for i in range(len(X)):
-            cluster_center = centroids[labels[i]]
-            cost_function_value += weights[i]*np.sum((X[i] - cluster_center) ** 2)
-    return cost_function_value
-
 # コストの描画
-def draw_cost(cost_record,formatted_now, experimentPath):
-    plt.figure()
-    plt.plot(cost_record)
-    plt.xlabel("n(回)")
-    plt.ylabel("COST")
-    filename = experimentPath.joinpath("CostRecord_"+formatted_now+".png")
-    plt.savefig(filename)
-    plt.close()
-    # plt.show()
+# def draw_cost(cost_record,formatted_now, experimentPath):
+#     plt.figure()
+#     plt.plot(cost_record)
+#     plt.xlabel("n(回)")
+#     plt.ylabel("COST")
+#     filename = experimentPath.joinpath("CostRecord_"+formatted_now+".png")
+#     plt.savefig(filename)
+#     plt.clf()
+#     # plt.show()
 
 # メッシュ数の記録
 # def draw_mesh_sum(mesh_sum_record,formatted_now, experimentPath):

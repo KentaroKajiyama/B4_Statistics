@@ -47,8 +47,8 @@ def main():
     n = 23
     # ディレクトリの指定 東京２３区ユークリッド距離
     parent = Path(__file__).resolve().parent.parent
-    # ディレクトリの指定 実験データ東京２３区２乗
-    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.joinpath("実験データ/東京２３区/２乗")
+    # ディレクトリの指定 実験データ東京２３区１乗
+    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.joinpath("実験データ/東京２３区/１乗")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
@@ -76,7 +76,7 @@ def main():
     vor_polys_box = bounded_voronoi_mult(bnd_polys, pnts)
     draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
     # 初期状態のコストを計算
-    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = False)
+    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = True)
     cost_record.append(cost)
     # 初期点の記録
     with open(experimentPath.joinpath(resultfile), "a") as f:
@@ -86,7 +86,7 @@ def main():
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
     # 解の描画
     vor_polys_box = bounded_voronoi_mult(bnd_polys, optimized_pnts)
     draw_voronoi(bnd_polys, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
@@ -202,7 +202,7 @@ def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_no
     plt.savefig(filename)
     plt.clf()
 
-def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None,resultfile = None):
+def weighted_kmedians(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None, resultfile = None):
     # データポイントの数
     n_samples = X.shape[0]
     # ランダムに初期クラスタ中心を選択
@@ -220,14 +220,17 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
+            new_centroids = []
+            for k in range(n_clusters):
+                new_centroids.append(geometric_median(X[labels == k], mesh_weight=weights[labels == k]))
+            new_centroids =  np.array(new_centroids)
 
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
 
             centroids = new_centroids
-            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = False))
+            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = True))
         with open(experimentPath.joinpath(resultfile), "a") as f:
             f.write("cost record in iterations\n")
             np.savetxt(f, np.array(cost_record), fmt = '%f')
@@ -238,20 +241,63 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
+            new_centroids = []
+            for k in range(n_clusters):
+                new_centroids.append(geometric_median(X[labels == k], mesh_weight=weights[labels == k]))
+            new_centroids =  np.array(new_centroids)
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
+
         centroids = new_centroids
 
     # コスト関数（目的関数）の計算
     cost_function_value = 0
     for i in range(len(X)):
         cluster_center = centroids[labels[i]]
-        cost_function_value += weights[i]*np.sum((X[i] - cluster_center)**2)
+        cost_function_value += weights[i]*math.sqrt(np.sum((X[i] - cluster_center)**2))
     
     return centroids, labels, cost_function_value
 
+def geometric_median(X, mesh_weight, eps=1e-5):
+    #初期点は平均値から始める
+    if X.size == 0:
+        print("X.size is 0")
+        return ["None"]
+    y = np.mean(X, 0)
+    mesh_weight = mesh_weight.reshape([-1,1])
+    while True:
+        D = cdist(X, [y])
+        nonzeros = (D != 0)[:, 0]
+        zero = (D == 0)[:, 0]
+        Dinv = mesh_weight[nonzeros] / D[nonzeros]
+        Dinvs = np.sum(Dinv)
+        #重みが0のものにだけ当たっちゃった場合
+        if Dinvs == 0:
+            print("Dinvs == 0")
+            return y
+        W = Dinv / Dinvs
+        T = np.sum(W * X[nonzeros], 0)
+
+        num_zeros = len(X) - np.sum(nonzeros)
+        # yとx1,...,xmが一つも被っていない場合
+        if num_zeros == 0:
+            y1 = T
+        # yとx1,...,xmが全て被っている→つまり全部同じ点
+        elif num_zeros == len(X):
+            return y
+        # 1点だけ被っている（全てのサンプル点が異なる座標を持つという仮定を入れている）
+        else:
+            R = (T - y) * Dinvs
+            r = np.linalg.norm(R)
+            rinv = 0 if r == 0 else mesh_weight[zero]/r
+            y1 = max(0, 1-rinv)*T + min(1, rinv)*y
+        # 閾値を下回った時に終了
+        if euclidean(y, y1) < eps:
+            return y1
+
+        y = y1
+        
 # コスト関数単体
 def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = False):
     # labelがない場合
