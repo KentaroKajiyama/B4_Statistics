@@ -1,18 +1,14 @@
 # coding: utf-8
 import os
 import numpy as np
-import pandas as pd
-import geopandas as gpd
+import random
 import math
 from scipy.spatial import Voronoi
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 from shapely.geometry import Polygon
-from shapely.ops import unary_union
 from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
-from scipy.spatial.distance import cdist, euclidean
-import shp_to_mesh
 from pathlib import Path
 from datetime import datetime
 from matplotlib import rcParams
@@ -43,10 +39,8 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 
 
 def main():
-    # ディレクトリの指定 東京２３区ユークリッド距離
-    parent = Path(__file__).resolve().parent.parent
-    # ディレクトリの指定 実験データ東京２３区１乗
-    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/実データ/東京２３区/１乗")
+    # ディレクトリの指定 実験データ/人口データ/ランダム/２乗
+    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/ランダム/２乗")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
@@ -61,25 +55,22 @@ def main():
         f.write(formatted_now + "\n")
     # 母点の用意
     # 母点の数
-    n = 23
-    # 区役所名を除外して、緯度と経度のみの配列を作成．これをまずは初期点とする．
-    df = pd.read_csv(parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
-    pnts = df[['経度', '緯度']].to_numpy()
-    # ボロノイ分割する領域（東京23区）bndはPolygon型
-    gdf_bound = gpd.read_file(parent.joinpath("ソースコード/tokyo23_polygon.shp"))
-    gdf_mesh_origin = gpd.read_file(parent.joinpath("ソースコード/メッシュあり東京２３区人口データ付き.shp")).fillna(0)
-    coords_population = np.array(shp_to_mesh.shp_to_meshCoords(gdf_mesh_origin))
-    # bnd_polys bnd_polyの複数形
-    bnd_polys = unary_union(gdf_bound["geometry"])
+    n = 10
+    # 母点をランダムに配置する．（初期点）
+    pnts = 100*np.random.rand (n,2)
+    # メッシュ点の作成
+    coords_population, xx, yy, ww = CreateMesh(20)
+    # メッシュデータの描画
+    DrawMesh(xx,yy,ww, formatted_now,experimentPath)
+    # 境界（100×100の正方形領域）
+    bnd_poly = Polygon(np.array([[0,0],[100,0],[100,100],[0,100]]))
     # costの格納
     cost_record = []
     # 初期状態の図示
-    vor_polys_box = bounded_voronoi_mult(bnd_polys, pnts)
-    draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
-    print("coords_population_type:", type(coords_population))
-    print("coords_population_shape:", coords_population.shape)
+    vor_polys_box = bounded_voronoi_mult(bnd_poly, pnts)
+    draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
     # 初期状態のコストを計算
-    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = True)
+    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = False)
     cost_record.append(cost)
     # 初期点の記録
     with open(experimentPath.joinpath(resultfile), "a") as f:
@@ -89,10 +80,10 @@ def main():
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
     # 解の描画
-    vor_polys_box = bounded_voronoi_mult(bnd_polys, optimized_pnts)
-    draw_voronoi(bnd_polys, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
+    vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
+    draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
     # k-meansの出力のコスト関数値を記録
     cost_record.append(cost)
     with open(experimentPath.joinpath(resultfile), "a") as f:
@@ -102,17 +93,16 @@ def main():
             np.savetxt(f, np.array(cost_record), fmt = '%f')
     return 0
 
-def bounded_voronoi_mult(bnd_polys, pnts):
+def bounded_voronoi_mult(bnd_poly, pnts):
     vor_polys_box = []
     vor_poly_counter_box = []
     # bnds = []
     # 初期状態を図示
-    for bnd_poly in bnd_polys.geoms:
-        vor_polys, vor_poly_counter_box = bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box)
-        for vor_poly in vor_polys:
-            vor_polys_box.append(vor_poly)
-        # 終わったら削除
-        # bnds.append(np.array(bnd_poly.exterior.coords))
+    vor_polys, vor_poly_counter_box = bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box)
+    for vor_poly in vor_polys:
+        vor_polys_box.append(vor_poly)
+    # 終わったら削除
+    # bnds.append(np.array(bnd_poly.exterior.coords))
     return vor_polys_box #, vor_polys_counter_box
 
 # 有界なボロノイ図を計算する関数
@@ -135,8 +125,8 @@ def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
         vor_counter += 1
         vor_poly_counter_box.append(vor_counter)
         return [list(bnd_poly.exterior.coords[:-1])], vor_poly_counter_box
-    # すべての母点のボロノイ領域を有界にするために，ダミー母点を3個追加
-    gn_pnts = np.concatenate([pnts, np.array([[139.3, 35.], [139.6, 36.1], [140.3, 35.65], [139.758, 35.35], [140.1, 35.55], [140.2, 36]])])
+    # すべての母点のボロノイ領域を有界にするために，ダミー母点を6個追加
+    gn_pnts = np.concatenate([pnts, np.array([[-100, -100], [-100, 300], [50, 600], [50, -600], [300, 300], [300, -100]])])
     # ボロノイ図の計算
     vor = Voronoi(gn_pnts)
     # 各ボロノイ領域をしまうリスト
@@ -163,19 +153,18 @@ def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
 # ボロノイ図を描画する関数
 
 
-def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_now, experimentPath,number=1,labels = None, coloring = False):
+def draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now, experimentPath,number=1,labels = None, coloring = False):
     # import mesh
     xmin = pnts[0][0]
     xmax = pnts[0][0]
     ymin = pnts[0][1]
     ymax = pnts[0][1]
     # polygon to numpy
-    for bnd_poly in bnd_polys.geoms:
-        bnd = np.array(bnd_poly.exterior.coords)
-        xmin = np.min(np.array([xmin, np.min(bnd[:, 0])]))
-        xmax = np.max(np.array([xmax, np.max(bnd[:, 0])]))
-        ymin = np.min(np.array([ymin, np.min(bnd[:, 1])]))
-        ymax = np.max(np.array([ymax, np.max(bnd[:, 1])]))
+    bnd = np.array(bnd_poly.exterior.coords)
+    xmin = np.min(np.array([xmin, np.min(bnd[:, 0])]))
+    xmax = np.max(np.array([xmax, np.max(bnd[:, 0])]))
+    ymin = np.min(np.array([ymin, np.min(bnd[:, 1])]))
+    ymax = np.max(np.array([ymax, np.max(bnd[:, 1])]))
     # ボロノイ図の描画
     fig = plt.figure(figsize=(7, 6))
     ax = fig.add_subplot(111)
@@ -190,8 +179,7 @@ def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_no
     else:
         ax.scatter(np_coords[:, 0], np_coords[:, 1], label="メッシュ")
     # ボロノイ領域
-    poly_vor = PolyCollection(
-        vor_polys_box, edgecolor="black", facecolors="None", linewidth=1.0)
+    poly_vor = PolyCollection(vor_polys_box, edgecolor="black", facecolors="None", linewidth=1.0)
     ax.add_collection(poly_vor)
     # 描画の範囲設定
     ax.set_xlim(xmin-0.01, xmax+0.01)
@@ -205,7 +193,7 @@ def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_no
     plt.savefig(filename)
     plt.close()
 
-def weighted_kmedians(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None, resultfile = None):
+def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None,resultfile = None):
     # データポイントの数
     n_samples = X.shape[0]
     # ランダムに初期クラスタ中心を選択
@@ -223,17 +211,14 @@ def weighted_kmedians(X, weights, n_clusters, pnts=None, max_iter=100, initial =
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = []
-            for k in range(n_clusters):
-                new_centroids.append(geometric_median(X[labels == k], mesh_weight=weights[labels == k]))
-            new_centroids =  np.array(new_centroids)
+            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
 
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
 
             centroids = new_centroids
-            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = True))
+            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = False))
         with open(experimentPath.joinpath(resultfile), "a") as f:
             f.write("cost record in iterations\n")
             np.savetxt(f, np.array(cost_record), fmt = '%f')
@@ -244,63 +229,20 @@ def weighted_kmedians(X, weights, n_clusters, pnts=None, max_iter=100, initial =
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = []
-            for k in range(n_clusters):
-                new_centroids.append(geometric_median(X[labels == k], mesh_weight=weights[labels == k]))
-            new_centroids =  np.array(new_centroids)
+            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
-
         centroids = new_centroids
 
     # コスト関数（目的関数）の計算
     cost_function_value = 0
     for i in range(len(X)):
         cluster_center = centroids[labels[i]]
-        cost_function_value += weights[i]*math.sqrt(np.sum((X[i] - cluster_center)**2))
+        cost_function_value += weights[i]*np.sum((X[i] - cluster_center)**2)
     
     return centroids, labels, cost_function_value
 
-def geometric_median(X, mesh_weight, eps=1e-5):
-    #初期点は平均値から始める
-    if X.size == 0:
-        print("X.size is 0")
-        return ["None"]
-    y = np.mean(X, 0)
-    mesh_weight = mesh_weight.reshape([-1,1])
-    while True:
-        D = cdist(X, [y])
-        nonzeros = (D != 0)[:, 0]
-        zero = (D == 0)[:, 0]
-        Dinv = mesh_weight[nonzeros] / D[nonzeros]
-        Dinvs = np.sum(Dinv)
-        #重みが0のものにだけ当たっちゃった場合
-        if Dinvs == 0:
-            print("Dinvs == 0")
-            return y
-        W = Dinv / Dinvs
-        T = np.sum(W * X[nonzeros], 0)
-
-        num_zeros = len(X) - np.sum(nonzeros)
-        # yとx1,...,xmが一つも被っていない場合
-        if num_zeros == 0:
-            y1 = T
-        # yとx1,...,xmが全て被っている→つまり全部同じ点
-        elif num_zeros == len(X):
-            return y
-        # 1点だけ被っている（全てのサンプル点が異なる座標を持つという仮定を入れている）
-        else:
-            R = (T - y) * Dinvs
-            r = np.linalg.norm(R)
-            rinv = 0 if r == 0 else mesh_weight[zero]/r
-            y1 = max(0, 1-rinv)*T + min(1, rinv)*y
-        # 閾値を下回った時に終了
-        if euclidean(y, y1) < eps:
-            return y1
-
-        y = y1
-        
 # コスト関数単体
 def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = False):
     # labelがない場合
@@ -319,6 +261,32 @@ def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = Fa
             cost_function_value += weights[i]*np.sum((X[i] - cluster_center) ** 2)
     return cost_function_value
 
+# メッシュの生成
+def CreateMesh(N = 200):
+    X = np.linspace(0, 100, N)
+    Y = np.linspace(0, 100, N)
+    X, Y = np.meshgrid(X, Y)
+    #各点の座標を取得
+    points = np.vstack([X.ravel(), Y.ravel()]).T
+    #各点にランダムな重みをつける
+    weights = [random.randint(0, 1000) for _ in range(len(points))]
+    # 作ったものを１つに
+    coordinates = [np.array([points[i][0], points[i][1], weights[i]]) for i in range(len(points))]
+    # MeshGrid仕様に
+    weights_grid = np.array(weights).reshape(X.shape)
+    return np.array(coordinates), X , Y, weights_grid
+
+# メッシュの描画
+def DrawMesh(X_grid, Y_grid, weights_grid, formatted_now = "Now", experimentPath = ""):
+    plt.figure(figsize=(10, 8))
+    plt.pcolormesh(X_grid, Y_grid, weights_grid, shading="auto")
+    plt.colorbar(label="Weight")
+    plt.xlabel("X-axis")
+    plt.ylabel("Y-axis")
+    filename = experimentPath.joinpath("MeshGrid_"+formatted_now+".png")
+    plt.savefig(filename)
+    # plt.show()
+    plt.close()
 # コストの描画
 def draw_cost(cost_record,formatted_now, experimentPath):
     plt.figure()

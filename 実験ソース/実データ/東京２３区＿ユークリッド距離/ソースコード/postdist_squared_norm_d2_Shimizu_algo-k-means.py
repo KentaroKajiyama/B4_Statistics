@@ -43,8 +43,6 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 
 
 def main():
-    # ポストの用意
-    n = 23
     # ディレクトリの指定 東京２３区ユークリッド距離
     parent = Path(__file__).resolve().parent.parent
     # ディレクトリの指定 実験データ東京２３区２乗
@@ -61,6 +59,9 @@ def main():
     resultfile = "result_Mean_"+formatted_now+".csv"
     with open(experimentPath.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
+    # 母点の用意， 対象領域の用意
+    # 母点の数
+    n = 23
     # 区役所名を除外して、緯度と経度のみの配列を作成．これをまずは初期点とする．
     df = pd.read_csv(parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
     pnts = df[['経度', '緯度']].to_numpy()
@@ -187,8 +188,7 @@ def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_no
     else:
         ax.scatter(np_coords[:, 0], np_coords[:, 1], label="メッシュ")
     # ボロノイ領域
-    poly_vor = PolyCollection(
-        vor_polys_box, edgecolor="black", facecolors="None", linewidth=1.0)
+    poly_vor = PolyCollection(vor_polys_box, edgecolor="black", facecolors="None", linewidth=1.0)
     ax.add_collection(poly_vor)
     # 描画の範囲設定
     ax.set_xlim(xmin-0.01, xmax+0.01)
@@ -200,7 +200,7 @@ def draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_no
     else:
         filename = experimentPath.joinpath("初期状態ボロノイ図_"+formatted_now+".png")
     plt.savefig(filename)
-    plt.clf()
+    plt.close()
 
 def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None,resultfile = None):
     # データポイントの数
