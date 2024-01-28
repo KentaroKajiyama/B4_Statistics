@@ -76,8 +76,6 @@ def main():
     # 初期状態の図示
     vor_polys_box = bounded_voronoi_mult(bnd_polys, pnts)
     draw_voronoi(bnd_polys, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
-    print("coords_population_type:", type(coords_population))
-    print("coords_population_shape:", coords_population.shape)
     # 初期状態のコストを計算
     cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = True)
     cost_record.append(cost)
@@ -293,7 +291,7 @@ def geometric_median(X, mesh_weight, eps=1e-5):
         else:
             R = (T - y) * Dinvs
             r = np.linalg.norm(R)
-            rinv = 0 if r == 0 else mesh_weight[zero]/r
+            rinv = 0 if r == 0 else mesh_weight[zero][0][0]/r
             y1 = max(0, 1-rinv)*T + min(1, rinv)*y
         # 閾値を下回った時に終了
         if euclidean(y, y1) < eps:

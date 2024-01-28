@@ -36,7 +36,19 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・座標系を統一してそのままGIS上でも扱えるようにしたい。
 ・
 """
-
+################################################################
+# 各種パラメータの設定
+# 初期点の変更回数
+ITERATIONS = 100
+# メッシュ数
+MESH_NUMBER = 20
+# メッシュの透明度
+TRANSPARENCY = 0.9
+# メッシュを生成する乱数のSeed設定
+SEED_NUMBER = 42
+# メッシュのみの図を作るか否か
+MAKE_ONLY_MESH = False
+################################################################
 
 def main(i):
     # ディレクトリの指定 実験データ/人口データ/ランダム/２乗
@@ -46,13 +58,14 @@ def main(i):
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
     # 保存用ディレクトリの指定
-    experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i))
+    experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i+1))
     # 保存用ディレクトリの作成
     os.mkdir(experimentPath) 
     # 結果の保存先
     resultfile = "result_artMesh_Mean_random.csv"
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
+        f.write(str(i+1)+"回目，seedIndex="+str(i)+"\n")
     # 母点の用意
     # 母点の数
     n = 10
@@ -64,11 +77,10 @@ def main(i):
     bnd_poly = Polygon(np.array([[0,0],[bnd_end,0],[bnd_end,bnd_end],[0,bnd_end]]))
     # メッシュ点の作成
     # MeshNumber**2の数のメッシュができる．
-    MeshNumber = 20
-    coords_population, xx, yy, ww = CreateMesh(MeshNumber)
+    MeshNumber = MESH_NUMBER
+    coords_population, xx, yy, ww = CreateMesh(N=MeshNumber)
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("メッシュの数:"+ str(MeshNumber**2)+"\n")
-        f.write(str(i)+"回目\n")
     # メッシュデータの描画
     DrawMesh(xx,yy,ww, formatted_now,experimentPath)
     # costの格納
@@ -272,7 +284,7 @@ def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = Fa
 
 # メッシュの生成
 def CreateMesh(N = 200):
-    random.seed(42)
+    random.seed(SEED_NUMBER)
     X = np.linspace(0, 100, N)
     Y = np.linspace(0, 100, N)
     X, Y = np.meshgrid(X, Y)
@@ -320,5 +332,5 @@ def draw_cost(cost_record,formatted_now, experimentPath):
 #     # plt.show()
     
 if __name__ == '__main__':
-    for i in range(10):
+    for i in range(ITERATIONS):
         main(i)
