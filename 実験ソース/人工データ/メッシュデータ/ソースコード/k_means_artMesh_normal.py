@@ -38,36 +38,39 @@ n個の施設配置、最適な配置は総平均（期待値）で評価する�
 """
 
 
-def main():
+def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False):
     # ディレクトリの指定 実験データ/人口データ/ランダム/２乗
-    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/２乗")
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/２乗")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
     # 保存用ディレクトリの指定
-    experimentPath = experimentPath.joinpath(formatted_now)
+    experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i))
     # 保存用ディレクトリの作成
     os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_Mean_"+formatted_now+".csv"
-    with open(experimentPath.joinpath(resultfile), "a") as f:
+    resultfile = "result_artMesh_Mean_normal.csv"
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
+        f.write(str(i)+"回目\n")
     # 母点の用意
     # 母点の数
     n = 3
     # 母点をランダムに配置する．（初期点）
+    np.random.seed(i)
     pnts = 4*np.random.rand (n,2)-2
-    # 確認用の初期点．正しければコメントアウト
-    pnts = np.array([[-1.5,0],[1.5,0],[0,1.4]])
+    # # 確認用の初期点．正しければコメントアウト
+    # pnts = np.array([[-1.5,0],[1.5,0],[0,1.4]])
     # 境界（100×100の正方形領域）
     bnd_end = 5
     bnd_poly = Polygon(np.array([[-bnd_end,-bnd_end],[bnd_end,-bnd_end],[bnd_end,bnd_end],[-bnd_end,bnd_end]]))
     # メッシュ点の作成
     # MeshNumber**2の数のメッシュができる．
     MeshNumber = 1000
-    coords_population, xx, yy, ww = CreateMesh(-bnd_end,bnd_end,MeshNumber)
-    with open(experimentPath.joinpath(resultfile), "a") as f:
+    if not CreatedMesh:
+        coords_population, xx, yy, ww = CreateMesh(-bnd_end,bnd_end,MeshNumber)
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("メッシュの数:"+ str(MeshNumber**2)+"\n")
     # メッシュデータの描画
     DrawMesh(xx,yy,ww, formatted_now,experimentPath)
@@ -80,24 +83,26 @@ def main():
     cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = False)
     cost_record.append(cost)
     # 初期点の記録
-    with open(experimentPath.joinpath(resultfile), "a") as f:
-        f.write("初期母点\n")
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
+        f.write("初期母点:")
         np.savetxt(f, pnts, fmt = '%f')
     # k-means法
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, optimized_cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
     # 解の描画
     vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
     draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
     # k-meansの出力のコスト関数値を記録
-    cost_record.append(cost)
-    with open(experimentPath.joinpath(resultfile), "a") as f:
-            f.write("局所最適点\n")
-            np.savetxt(f, optimized_pnts, fmt = '%f')
-            f.write("cost record\n")
-            np.savetxt(f, np.array(cost_record), fmt = '%f')
+    cost_record.append(optimized_cost)
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
+        f.write("局所最適点\n")
+        np.savetxt(f, optimized_pnts, fmt = '%f')
+        f.write("optimized cost:")
+        np.savetxt(f, [optimized_cost], fmt = '%f')
+    with open(experimentPathParent.joinpath("cost_stock.csv"), "a") as f:
+        np.savetxt(f, [optimized_cost], fmt = '%f')
     return 0
 
 def bounded_voronoi_mult(bnd_poly, pnts):
@@ -240,7 +245,7 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
-        centroids = new_centroids
+            centroids = new_centroids
 
     # コスト関数（目的関数）の計算
     cost_function_value = 0
@@ -290,7 +295,7 @@ def CreateMesh(bndmin, bndmax,N = 200):
 # メッシュの描画
 def DrawMesh(X_grid, Y_grid, weights_grid, formatted_now = "Now", experimentPath = ""):
     plt.figure(figsize=(10, 8))
-    plt.pcolormesh(X_grid, Y_grid, weights_grid, shading="auto")
+    plt.pcolormesh(X_grid, Y_grid, weights_grid, cmap="Reds",shading="auto")
     plt.colorbar(label="Weight")
     plt.xlabel("X-axis")
     plt.ylabel("Y-axis")
@@ -321,4 +326,6 @@ def draw_cost(cost_record,formatted_now, experimentPath):
 #     # plt.show()
     
 if __name__ == '__main__':
-    main()
+    coords_population, xx, yy,ww=CreateMesh(-5,5,1000)
+    for i in range(10):
+        main(i,MeshNumber=1000,coords_population=coords_population, xx=xx, yy=yy, ww=ww,CreatedMesh = True)

@@ -39,28 +39,33 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 """
 
 
-def main():
+def main(i):
     # ディレクトリの指定 実験データ/人口データ/ランダム/1乗
-    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/ランダム/１乗")
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/ランダム/１乗")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
     # 保存用ディレクトリの指定
-    experimentPath = experimentPath.joinpath(formatted_now)
+    experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i))
     # 保存用ディレクトリの作成
     os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_Median_"+formatted_now+".csv"
-    with open(experimentPath.joinpath(resultfile), "a") as f:
+    resultfile = "result_artMesh_Median_random.csv"
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
+        f.write(str(i)+"回目\n")
     # 母点の用意
     # 母点の数
     n = 10
     # 母点をランダムに配置する．（初期点）
+    np.random.seed(i)
     pnts = 100*np.random.rand (n,2)
     # メッシュ点の作成
-    coords_population, xx, yy, ww = CreateMesh(20)
+    MeshNumber = 20
+    coords_population, xx, yy, ww = CreateMesh(MeshNumber)
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
+        f.write("メッシュの数:"+ str(MeshNumber**2)+"\n")
     # メッシュデータの描画
     DrawMesh(xx,yy,ww, formatted_now,experimentPath)
     # 境界（100×100の正方形領域）
@@ -70,30 +75,30 @@ def main():
     # 初期状態の図示
     vor_polys_box = bounded_voronoi_mult(bnd_poly, pnts)
     draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
-    print("coords_population_type:", type(coords_population))
-    print("coords_population_shape:", coords_population.shape)
     # 初期状態のコストを計算
     cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = True)
     cost_record.append(cost)
     # 初期点の記録
-    with open(experimentPath.joinpath(resultfile), "a") as f:
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("初期母点\n")
         np.savetxt(f, pnts, fmt = '%f')
     # k-means法
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, optimized_cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
     # 解の描画
     vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
     draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
     # k-meansの出力のコスト関数値を記録
-    cost_record.append(cost)
-    with open(experimentPath.joinpath(resultfile), "a") as f:
-            f.write("局所最適点\n")
-            np.savetxt(f, optimized_pnts, fmt = '%f')
-            f.write("cost record\n")
-            np.savetxt(f, np.array(cost_record), fmt = '%f')
+    cost_record.append(optimized_cost)
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
+        f.write("局所最適点\n")
+        np.savetxt(f, optimized_pnts, fmt = '%f')
+        f.write("optimized cost:")
+        np.savetxt(f, [optimized_cost], fmt = '%f')
+    with open(experimentPathParent.joinpath("cost_stock.csv"), "a") as f:
+        np.savetxt(f, [optimized_cost], fmt = '%f')
     return 0
 
 def bounded_voronoi_mult(bnd_poly, pnts):
@@ -284,7 +289,7 @@ def geometric_median(X, mesh_weight, eps=1e-5):
         else:
             R = (T - y) * Dinvs
             r = np.linalg.norm(R)
-            rinv = 0 if r == 0 else mesh_weight[zero]/r
+            rinv = 0 if r == 0 else mesh_weight[zero][0][0]/r
             y1 = max(0, 1-rinv)*T + min(1, rinv)*y
         # 閾値を下回った時に終了
         if euclidean(y, y1) < eps:
@@ -313,6 +318,7 @@ def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = Fa
 
 # メッシュの生成
 def CreateMesh(N = 200):
+    random.seed(42)
     X = np.linspace(0, 100, N)
     Y = np.linspace(0, 100, N)
     X, Y = np.meshgrid(X, Y)
@@ -350,4 +356,5 @@ def draw_cost(cost_record,formatted_now, experimentPath):
 
     
 if __name__ == '__main__':
-    main()
+    for i in range(10):
+        main(i)
