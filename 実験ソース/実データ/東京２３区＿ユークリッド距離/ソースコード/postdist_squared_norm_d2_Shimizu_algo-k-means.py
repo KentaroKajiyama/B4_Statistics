@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import math
+import random
 from scipy.spatial import Voronoi
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
@@ -40,35 +41,43 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・座標系を統一してそのままGIS上でも扱えるようにしたい。
 ・
 """
+################################################################
+# 各種パラメータの設定
+# 母点の数
+MOTHER_POINT_NUMBER = 23
+# 初期点の変更回数
+ITERATIONS = 100
+# ディレクトリの指定 東京２３区/ユークリッド距離
+Parent = Path(__file__).resolve().parent.parent
+################################################################
 
-
-def main():
-    # ディレクトリの指定 東京２３区ユークリッド距離
-    parent = Path(__file__).resolve().parent.parent
-    # ディレクトリの指定 実験データ東京２３区２乗
-    experimentPath = Path(__file__).resolve().parent.parent.parent.parent.joinpath("実験データ/東京２３区/２乗")
+def main(i, gdf_bound, gdf_mesh_origin, coords_population):
+    # ディレクトリの指定 実験データ/実データ/東京２３区/２乗
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/実データ/東京２３区/２乗")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
     # 保存用ディレクトリの指定
-    experimentPath = experimentPath.joinpath(formatted_now)
+    experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i+1))
     # 保存用ディレクトリの作成
     os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_Mean_"+formatted_now+".csv"
-    with open(experimentPath.joinpath(resultfile), "a") as f:
+    resultfile = "result_Mean.csv"
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
+        f.write(str(i+1)+"回目，np.seedIndex="+str(i)+"\n")
     # 母点の用意， 対象領域の用意
     # 母点の数
-    n = 23
+    n = MOTHER_POINT_NUMBER
     # 区役所名を除外して、緯度と経度のみの配列を作成．これをまずは初期点とする．
-    df = pd.read_csv(parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
+    df = pd.read_csv(Parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
     pnts = df[['経度', '緯度']].to_numpy()
-    # ボロノイ分割する領域（東京23区）bndはPolygon型
-    gdf_bound = gpd.read_file(parent.joinpath("ソースコード/tokyo23_polygon.shp"))
-    gdf_mesh_origin = gpd.read_file(parent.joinpath("ソースコード/メッシュあり東京２３区人口データ付き.shp")).fillna(0)
-    coords_population = np.array(shp_to_mesh.shp_to_meshCoords(gdf_mesh_origin))
+    ## テストできたらランダムな初期点でも試す．
+    ## 東京23区内のおおよその緯度経度の範囲を設定
+    ## 緯度の範囲: 35.5°N - 35.8°N
+    ## 経度の範囲: 139.6°E - 139.9°E
+    pnts = generate_random_coordinates(23, (139.6, 139.9), (35.55, 35.8),seed = i)
     # bnd_polys bnd_polyの複数形
     bnd_polys = unary_union(gdf_bound["geometry"])
     # costの格納
@@ -80,24 +89,26 @@ def main():
     cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = False)
     cost_record.append(cost)
     # 初期点の記録
-    with open(experimentPath.joinpath(resultfile), "a") as f:
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("初期母点\n")
         np.savetxt(f, pnts, fmt = '%f')
     # k-means法
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, optimized_cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
     # 解の描画
     vor_polys_box = bounded_voronoi_mult(bnd_polys, optimized_pnts)
     draw_voronoi(bnd_polys, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
     # k-meansの出力のコスト関数値を記録
-    cost_record.append(cost)
-    with open(experimentPath.joinpath(resultfile), "a") as f:
-            f.write("局所最適点\n")
-            np.savetxt(f, optimized_pnts, fmt = '%f')
-            f.write("cost record\n")
-            np.savetxt(f, np.array(cost_record), fmt = '%f')
+    cost_record.append(optimized_cost)
+    with open(experimentPathParent.joinpath(resultfile), "a") as f:
+        f.write("局所最適点\n")
+        np.savetxt(f, optimized_pnts, fmt = '%f')
+        f.write("optimized cost\n")
+        np.savetxt(f, [optimized_cost], fmt = '%f')
+    with open(experimentPathParent.joinpath("cost_stock.csv"), "a") as f:
+        np.savetxt(f, [optimized_cost], fmt = '%f')
     return 0
 
 def bounded_voronoi_mult(bnd_polys, pnts):
@@ -108,7 +119,8 @@ def bounded_voronoi_mult(bnd_polys, pnts):
     for bnd_poly in bnd_polys.geoms:
         vor_polys, vor_poly_counter_box = bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box)
         for vor_poly in vor_polys:
-            vor_polys_box.append(vor_poly)
+            if len(vor_poly) > 0:
+                vor_polys_box.append(vor_poly)
         # 終わったら削除
         # bnds.append(np.array(bnd_poly.exterior.coords))
     return vor_polys_box #, vor_polys_counter_box
@@ -133,7 +145,7 @@ def bounded_voronoi(bnd_poly, pnts, vor_poly_counter_box):
         vor_counter += 1
         vor_poly_counter_box.append(vor_counter)
         return [list(bnd_poly.exterior.coords[:-1])], vor_poly_counter_box
-    # すべての母点のボロノイ領域を有界にするために，ダミー母点を3個追加
+    # すべての母点のボロノイ領域を有界にするために，ダミー母点を6個追加
     gn_pnts = np.concatenate([pnts, np.array([[139.3, 35.], [139.6, 36.1], [140.3, 35.65], [139.758, 35.35], [140.1, 35.55], [140.2, 36]])])
     # ボロノイ図の計算
     vor = Voronoi(gn_pnts)
@@ -220,12 +232,20 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
-
+            new_centroids = []
+            for k in range(n_clusters):
+                cluster_weights = weights[labels == k]
+                if np.sum(cluster_weights) != 0:
+                    centroid = np.average(X[labels == k], axis=0, weights=cluster_weights)
+                    
+                else:
+                    # 重みの合計がゼロの場合の処理。例えば、デフォルト値を設定。
+                    centroid = centroids[k]  # ここで適切なデフォルト値を設定する
+                new_centroids.append(centroid)
+            new_centroids = np.array(new_centroids)
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
-
             centroids = new_centroids
             cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = False))
         with open(experimentPath.joinpath(resultfile), "a") as f:
@@ -238,11 +258,19 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
+            new_centroids = []
+            for k in range(n_clusters):
+                cluster_weights = weights[labels == k]
+                if np.sum(cluster_weights) != 0:
+                    centroid = np.average(X[labels == k], axis=0, weights=cluster_weights)
+                else:
+                    # 重みの合計がゼロの場合の処理。例えば、デフォルト値を設定。
+                    centroid = centroids[k]  # ここで適切なデフォルト値を設定する
+                new_centroids.append(centroid)
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
-        centroids = new_centroids
+            centroids = new_centroids
 
     # コスト関数（目的関数）の計算
     cost_function_value = 0
@@ -281,16 +309,32 @@ def draw_cost(cost_record,formatted_now, experimentPath):
     plt.close()
     # plt.show()
 
-# メッシュ数の記録
-# def draw_mesh_sum(mesh_sum_record,formatted_now, experimentPath):
-#     plt.figure()
-#     plt.plot(mesh_sum_record)
-#     plt.xlabel("n(回)")
-#     plt.ylabel("総メッシュ数")
-#     filename = experimentPath.joinpath("MeshSumRecord_"+formatted_now+".png")
-#     plt.savefig(filename)
-#     plt.clf()
-#     # plt.show()
+# 東京23区内のおおよその緯度経度の範囲を設定
+# 緯度の範囲: 35.5°N - 35.8°N
+# 経度の範囲: 139.6°E - 139.9°E
+
+# 23個のランダムな地理座標点を生成する関数
+# 東京湾と横浜あたりだけには入らないように修正（lon_range(139.8,139,9),lat_range(35.5,35.65))
+def generate_random_coordinates(n, lon_range, lat_range, seed = 0):
+    random.seed(seed)
+    coords = []
+    for _ in range(n):
+        longtitude = random.uniform(*lon_range) ; latitude = random.uniform(*lat_range)
+        while (139.8 < longtitude <= 139.9 and 35.5 <= latitude < 35.65) or (longtitude + 2*latitude <= 210.8):
+            longtitude = random.uniform(*lon_range) ; latitude = random.uniform(*lat_range)
+        coords.append([longtitude, latitude])
+    return np.array(coords)
+
+# 23個のランダムな点を生成
+# pnts=generate_random_coordinates(23, (139.6, 139.9), (35.5, 35.8))
     
 if __name__ == '__main__':
-    main()
+    # ボロノイ分割する領域（東京23区）bndはPolygon型
+    gdf_bound = gpd.read_file(Parent.joinpath("ソースコード/tokyo23_polygon.shp"))
+    gdf_mesh_origin = gpd.read_file(Parent.joinpath("ソースコード/メッシュあり東京２３区人口データ付き.shp")).fillna(0)
+    coords_population = np.array(shp_to_mesh.shp_to_meshCoords(gdf_mesh_origin))
+    ## テストが終わったらコメントアウトを外す
+    for i in range(ITERATIONS):
+        main(i,gdf_bound,gdf_mesh_origin,coords_population)
+    ## テストが終わったらコメントアウト
+    # main(0,gdf_bound,gdf_mesh_origin,coords_population)

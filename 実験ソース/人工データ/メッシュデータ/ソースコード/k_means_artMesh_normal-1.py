@@ -52,6 +52,8 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 
 ################################################################
 # 各種パラメータの設定
+# 母点の数
+MOTHER_POINT_NUMBER = 3
 # 初期点の変更回数
 ITERATIONS = 100
 # 正規分布のパラメータ選択
@@ -85,7 +87,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
         f.write(str(i+1)+"回目，np.seedIndex="+str(i)+"\n")
     # 母点の用意
     # 母点の数
-    n = 3
+    n = MOTHER_POINT_NUMBER
     # 母点をランダムに配置する．（初期点）
     np.random.seed(i)
     pnts = 4*np.random.rand (n,2)-2
@@ -356,5 +358,15 @@ def draw_cost(cost_record,formatted_now, experimentPath):
     
 if __name__ == '__main__':
     coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N=MESH_NUMBER,mu=MU, sigma=SIGMA)
-    for i in range(ITERATIONS):
-        main(i,MeshNumber=MESH_NUMBER,coords_population=coords_population, xx=xx, yy=yy, ww=ww,CreatedMesh = True, mu=MU, sigma=SIGMA)
+    for i in range(94,95):
+        main(
+            i,
+            MeshNumber=MESH_NUMBER,
+            coords_population=coords_population,
+            xx=xx, 
+            yy=yy, 
+            ww=ww,
+            CreatedMesh = True, 
+            mu=MU, 
+            sigma=SIGMA
+            )
