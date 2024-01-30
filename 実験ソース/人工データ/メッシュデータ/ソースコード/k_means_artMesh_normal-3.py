@@ -52,6 +52,8 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 
 ################################################################
 # 各種パラメータの設定
+# 母点の数
+MOTHER_POINT_NUMBER = 3
 # 初期点の変更回数
 ITERATIONS = 100
 # 正規分布のパラメータ選択
@@ -85,7 +87,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
         f.write(str(i+1)+"回目，np.seedIndex="+str(i)+"\n")
     # 母点の用意
     # 母点の数
-    n = 3
+    n = MOTHER_POINT_NUMBER 
     # 母点をランダムに配置する．（初期点）
     np.random.seed(i)
     pnts = 4*np.random.rand (n,2)-2
@@ -244,7 +246,7 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
         random_indices = np.random.choice(n_samples, n_clusters, replace=False)
         centroids = X[random_indices]
 
-    #　コストの推移の確認のため描画するかしないか場合分け
+    # コストの推移の確認のため描画するかしないか場合分け
     if config:
         cost_record = []
         for _ in range(max_iter):

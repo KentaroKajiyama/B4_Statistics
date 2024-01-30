@@ -55,7 +55,7 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 # 母点の数
 MOTHER_POINT_NUMBER = 3
 # 初期点の変更回数
-ITERATIONS = 100
+ITERATIONS = 1
 # 正規分布のパラメータ選択
 MU = mu1
 SIGMA = sigma1
@@ -88,11 +88,11 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # 母点の用意
     # 母点の数
     n = MOTHER_POINT_NUMBER
-    # 母点をランダムに配置する．（初期点）
-    np.random.seed(i)
-    pnts = 4*np.random.rand (n,2)-2
-    # # 確認用の初期点．正しければコメントアウト
-    # pnts = np.array([[-1.5,0],[1.5,0],[0,1.4]])
+    # # 母点をランダムに配置する．（初期点）
+    # np.random.seed(i)
+    # pnts = 4*np.random.rand (n,2)-2
+    # 確認用の初期点．正しければコメントアウト
+    pnts = np.array([[-0.90,-0.52],[0.90,-0.52],[0,1.04]])
     # 境界（100×100の正方形領域）
     bnd_end = 5
     bnd_poly = Polygon(np.array([[-bnd_end,-bnd_end],[bnd_end,-bnd_end],[bnd_end,bnd_end],[-bnd_end,bnd_end]]))
