@@ -358,7 +358,7 @@ def draw_cost(cost_record,formatted_now, experimentPath):
     
 if __name__ == '__main__':
     coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N=MESH_NUMBER,mu=MU, sigma=SIGMA)
-    for i in range(94,95):
+    for i in range(ITERATIONS):
         main(
             i,
             MeshNumber=MESH_NUMBER,

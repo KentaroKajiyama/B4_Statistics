@@ -58,8 +58,8 @@ MOTHER_POINT_NUMBER = 5
 # 初期点の変更回数
 ITERATIONS = 1
 # 正規分布のパラメータ選択
-MU = mu3
-SIGMA = sigma3
+MU = mu4
+SIGMA = sigma4
 # メッシュ数
 MESH_NUMBER = 1000
 # メッシュの透明度
@@ -93,7 +93,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # np.random.seed(i)
     # pnts = 4*np.random.rand (n,2)-2
     # # 確認用の初期点．正しければコメントアウト
-    pnts = np.array([[-2,0.1],[2,0.1],[0,0],[1.4,-0.3],[-1.4,-0.3]])
+    pnts = np.array([[-2,0.0],[2,0.0],[0,0],[1.4,0],[-1.4,0]])
     # 境界（100×100の正方形領域）
     bnd_end = 5
     bnd_poly = Polygon(np.array([[-bnd_end,-bnd_end],[bnd_end,-bnd_end],[bnd_end,bnd_end],[-bnd_end,bnd_end]]))
