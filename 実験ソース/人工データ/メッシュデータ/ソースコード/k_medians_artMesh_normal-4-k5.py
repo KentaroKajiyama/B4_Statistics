@@ -56,7 +56,7 @@ mu4 = [0,0]; sigma4= [[9,0],[0,1]]
 # 母点の数
 MOTHER_POINT_NUMBER = 5
 # 初期点の変更回数
-ITERATIONS = 1
+ITERATIONS = 100
 # 正規分布のパラメータ選択
 MU = mu4
 SIGMA = sigma4
@@ -69,14 +69,14 @@ SEED_NUMBER = 42
 # メッシュのみの図を作るか否か
 MAKE_ONLY_MESH = False
 # 初期点を指定する場合
-ISRANDOM = False
+ISRANDOM = True
 POINTS = np.array([[-3.664921, 0.000000],[3.664921 ,0.000000],[0.000000, 0.000000],[1.722372 ,0.000000],[-1.722372 ,0.000000]])
 ################################################################
 
 
 def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False, mu = None, sigma = None):
-    # ディレクトリの指定 実験データ/人口データ/ランダム/1乗/case3
-    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case4")
+    # ディレクトリの指定 実験データ/人口データ/ランダム/1乗/case4/100回実験_k5
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case4/100回実験_k5")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
