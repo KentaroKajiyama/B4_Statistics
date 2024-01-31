@@ -63,6 +63,10 @@ def get_latlon(meshCode):
             if code_eleventh % 2 == 0:
                 lon += 1 / 8 / 10 / 2 / 2 / 2
     # 点をメッシュの中央に置く
+    if len(meshCode) == 9:
+        lat += 1 * 2 / 3 / 8 / 10 / 2 / 2
+        lon += 1 / 8 / 10 / 2 / 2
+    return lon,lat
     if len(meshCode) == 10:
         lat += 1 * 2 / 3 / 8 / 10 / 2 / 2 / 2
         lon += 1 / 8 / 10 / 2 / 2 / 2
@@ -80,6 +84,6 @@ def shp_to_meshCoords(gdf):
     return coords_populations
 
 if __name__ == '__main__':
-    gdf = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実データ/台東区＿ユークリッド距離/ソースコード/台東区＿メッシュあり.shp")
+    gdf = gpd.read_file("/Users/kajiyamakentarou/Keisu/卒論/最適配置/実験ソース/実データ/東京２３区＿ユークリッド距離/ソースコード/2000年東京人口メッシュ.shp")
     coords_populations = shp_to_meshCoords(gdf)
     print(coords_populations)

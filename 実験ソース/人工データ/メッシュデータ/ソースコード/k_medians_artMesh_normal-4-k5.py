@@ -405,5 +405,5 @@ if __name__ == '__main__':
     coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N= MESH_NUMBER,mu=MU, sigma=SIGMA)
     # # テスト用
     # DrawMesh(xx, yy, ww)
-    for i in range(ITERATIONS):
+    for i in range(91,ITERATIONS):
         main(i,MeshNumber=MESH_NUMBER,coords_population=coords_population, xx=xx, yy=yy, ww=ww,CreatedMesh = True, mu=MU, sigma=SIGMA)

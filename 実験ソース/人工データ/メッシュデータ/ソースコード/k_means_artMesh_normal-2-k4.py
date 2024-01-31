@@ -55,7 +55,7 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 # 母点の数
 MOTHER_POINT_NUMBER = 4
 # 初期点の変更回数
-ITERATIONS = 1
+ITERATIONS = 100
 # 正規分布のパラメータ選択
 MU = mu2
 SIGMA = sigma2
@@ -67,6 +67,9 @@ TRANSPARENCY = 0.9
 SEED_NUMBER = 42
 # メッシュのみの図を作るか否か
 MAKE_ONLY_MESH = False
+# 初期点を指定する場合
+ISRANDOM = True
+POINTS = np.array([[-1.96,0],[1.96,0],[0,0.91],[0,-0.91]])
 ################################################################
 
 def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False, mu = None, sigma = None):
@@ -90,9 +93,13 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     n = MOTHER_POINT_NUMBER
     # 母点をランダムに配置する．（初期点）
     np.random.seed(i)
-    pnts = 4*np.random.rand (n,2)-2
-    # # 確認用の初期点．正しければコメントアウト
-    pnts = np.array([[-1.96,0],[1.96,0],[0,0.91],[0,-0.91]])
+    if ISRANDOM:
+        # 母点をランダムに配置する．（初期点）
+        np.random.seed(i)
+        pnts = 4*np.random.rand (n,2)-2
+    else:
+        # 初期点を指定する場合
+        pnts = POINTS
     # 境界（100×100の正方形領域）
     bnd_end = 5
     bnd_poly = Polygon(np.array([[-bnd_end,-bnd_end],[bnd_end,-bnd_end],[bnd_end,bnd_end],[-bnd_end,bnd_end]]))

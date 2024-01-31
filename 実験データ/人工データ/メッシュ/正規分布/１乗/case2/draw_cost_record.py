@@ -13,7 +13,7 @@ def draw_cost_record():
     now = datetime.now()
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
-    file_path = Path(__file__).resolve().parent.joinpath("cost_stock.csv")
+    file_path = Path(__file__).resolve().parent.joinpath("cost_stock_k4.csv")
     df = pd.read_csv(file_path, header=None)
     data = df.iloc[:,0].values
     # 最小値とそのインデックスを見つける

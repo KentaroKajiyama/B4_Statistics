@@ -55,7 +55,7 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 # 母点の数
 MOTHER_POINT_NUMBER = 3
 # 初期点の変更回数
-ITERATIONS = 1
+ITERATIONS = 100
 # 正規分布のパラメータ選択
 MU = mu1
 SIGMA = sigma1
@@ -67,12 +67,15 @@ TRANSPARENCY = 0.9
 SEED_NUMBER = 42
 # メッシュのみの図を作るか否か
 MAKE_ONLY_MESH = False
+# 初期点を指定する場合
+ISRANDOM = True
+POINTS = np.array([[-0.90,-0.52],[0.90,-0.52],[0,1.04]])
 ################################################################
 
 
 def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False, mu = None, sigma = None):
     # ディレクトリの指定 実験データ/人口データ/ランダム/1乗
-    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case1")
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case1/100回実験_k3")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
@@ -89,11 +92,13 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # 母点の用意
     # 母点の数
     n = MOTHER_POINT_NUMBER
-    # 母点をランダムに配置する．（初期点）
-    # np.random.seed(i)
-    # pnts = 4*np.random.rand (n,2)-2
-    # # 確認用の初期点．正しければコメントアウト
-    pnts = np.array([[-0.90,-0.52],[0.90,-0.52],[0,1.04]])
+    if ISRANDOM:
+        # 母点をランダムに配置する．（初期点）
+        np.random.seed(i)
+        pnts = 4*np.random.rand (n,2)-2
+    else:
+        # 初期点を指定する場合
+        pnts = POINTS
     # 境界（100×100の正方形領域）
     bnd_end = 5
     bnd_poly = Polygon(np.array([[-bnd_end,-bnd_end],[bnd_end,-bnd_end],[bnd_end,bnd_end],[-bnd_end,bnd_end]]))
@@ -399,5 +404,5 @@ if __name__ == '__main__':
     coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N= MESH_NUMBER,mu=MU, sigma=SIGMA)
     # # テスト用
     # DrawMesh(xx, yy, ww)
-    for i in range(ITERATIONS):
+    for i in range(75,ITERATIONS):
         main(i,MeshNumber=MESH_NUMBER,coords_population=coords_population, xx=xx, yy=yy, ww=ww,CreatedMesh = True, mu=MU, sigma=SIGMA)

@@ -49,11 +49,15 @@ MOTHER_POINT_NUMBER = 23
 ITERATIONS = 100
 # ディレクトリの指定 東京２３区/ユークリッド距離
 Parent = Path(__file__).resolve().parent.parent
+# 初期点を指定する場合
+ISRANDOM = True
+df = pd.read_csv(Parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
+POINTS = pnts = df[['経度', '緯度']].to_numpy()
 ################################################################
 
 def main(i, gdf_bound, gdf_mesh_origin, coords_population):
     # ディレクトリの指定 実験データ/実データ/東京２３区/２乗
-    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/実データ/東京２３区/２乗")
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/実データ/東京２３区/２乗/2000")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
@@ -70,14 +74,12 @@ def main(i, gdf_bound, gdf_mesh_origin, coords_population):
     # 母点の用意， 対象領域の用意
     # 母点の数
     n = MOTHER_POINT_NUMBER
-    # 区役所名を除外して、緯度と経度のみの配列を作成．これをまずは初期点とする．
-    df = pd.read_csv(Parent.joinpath("初期状態/tokyo_23_wards_offices_utf8.csv"))
-    pnts = df[['経度', '緯度']].to_numpy()
-    ## テストできたらランダムな初期点でも試す．
-    ## 東京23区内のおおよその緯度経度の範囲を設定
-    ## 緯度の範囲: 35.5°N - 35.8°N
-    ## 経度の範囲: 139.6°E - 139.9°E
-    pnts = generate_random_coordinates(23, (139.6, 139.9), (35.55, 35.8),seed = i)
+    if ISRANDOM:
+        # 母点をランダムに配置する．（初期点）
+        pnts = generate_random_coordinates(23, (139.6, 139.9), (35.55, 35.8), seed = i)
+    else:
+        # 初期点を指定する場合
+        pnts = POINTS
     # bnd_polys bnd_polyの複数形
     bnd_polys = unary_union(gdf_bound["geometry"])
     # costの格納
@@ -331,10 +333,8 @@ def generate_random_coordinates(n, lon_range, lat_range, seed = 0):
 if __name__ == '__main__':
     # ボロノイ分割する領域（東京23区）bndはPolygon型
     gdf_bound = gpd.read_file(Parent.joinpath("ソースコード/tokyo23_polygon.shp"))
-    gdf_mesh_origin = gpd.read_file(Parent.joinpath("ソースコード/メッシュあり東京２３区人口データ付き.shp")).fillna(0)
+    gdf_mesh_origin = gpd.read_file(Parent.joinpath("ソースコード/2000年東京人口メッシュ.shp")).fillna(0)
     coords_population = np.array(shp_to_mesh.shp_to_meshCoords(gdf_mesh_origin))
     ## テストが終わったらコメントアウトを外す
     for i in range(ITERATIONS):
         main(i,gdf_bound,gdf_mesh_origin,coords_population)
-    ## テストが終わったらコメントアウト
-    # main(0,gdf_bound,gdf_mesh_origin,coords_population)
