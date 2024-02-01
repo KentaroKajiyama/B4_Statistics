@@ -46,7 +46,7 @@ mean = np.mean(inputs,axis=0)
 lines = [[(inputs[i][0],inputs[i][1]), (median[0],median[1])] for i in range(inputs.shape[0])]
 lc = mc.LineCollection(lines, linewidth = 1, color = (0,0,0,0.2))
 fig, ax = plt.subplots()
-ax.scatter(inputs[:, 0], inputs[:, 1],color='blue', label='初期点')
+ax.scatter(inputs[:, 0], inputs[:, 1],color='blue', label='データ点')
 ax.scatter(median[0],median[1],color='red',s= 100, label='$L_1$-中央値')
 ax.scatter(mean[0],mean[1],color='green',s=80, label='平均値')
 ax.add_collection(lc)

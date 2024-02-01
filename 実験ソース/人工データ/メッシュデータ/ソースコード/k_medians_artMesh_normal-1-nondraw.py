@@ -29,6 +29,7 @@ n個のポスト配置、最適な配置は総平均（期待値）で評価す�
 ・k-means法を利用
 ・サンプルは無限である
 ・正規化定数は１とみなす
+・図示は一切なし
 ----------------------------------------------------------------
 プログラムの改善点
 ・一点一点独立に扱っているので統一性を持たせたい
@@ -53,9 +54,9 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 ################################################################
 # 各種パラメータの設定
 # 母点の数
-MOTHER_POINT_NUMBER = 3
+MOTHER_POINT_NUMBER = 5
 # 初期点の変更回数
-ITERATIONS = 100
+ITERATIONS = 1
 # 正規分布のパラメータ選択
 MU = mu1
 SIGMA = sigma1
@@ -68,24 +69,24 @@ SEED_NUMBER = 42
 # メッシュのみの図を作るか否か
 MAKE_ONLY_MESH = False
 # 初期点を指定する場合
-ISRANDOM = True
-POINTS = np.array([[-0.90,-0.52],[0.90,-0.52],[0,1.04]])
+ISRANDOM = False
+POINTS = np.array([[-1.39,0],[1.39,0],[0,0],[0,1.39],[0,-1.39]])
 ################################################################
 
 
 def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False, mu = None, sigma = None):
     # ディレクトリの指定 実験データ/人口データ/ランダム/1乗
-    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case1/100回実験_k3")
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case1")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
     # 保存用ディレクトリの指定
-    experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i+1))
+    # experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i+1))
     # 保存用ディレクトリの作成
-    os.mkdir(experimentPath) 
+    # os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_artMesh_Median_normal_case1.csv"
+    resultfile = "result_artMesh_Median_normal_case1_k"+str(MOTHER_POINT_NUMBER)+".csv"
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
         f.write(str(i+1)+"回目，np.seedIndex="+str(i)+"\n")
@@ -110,12 +111,12 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("メッシュの数:"+ str(MeshNumber**2)+"\n")
     # メッシュデータの描画
-    DrawMesh(xx,yy,ww, formatted_now,experimentPath)
+    # DrawMesh(xx,yy,ww, formatted_now,experimentPath)
     # costの格納
     cost_record = []
     # 初期状態の図示
-    vor_polys_box = bounded_voronoi_mult(bnd_poly, pnts)
-    draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
+    # vor_polys_box = bounded_voronoi_mult(bnd_poly, pnts)
+    # draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
     # 初期状態のコストを計算
     cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = True)
     cost_record.append(cost)
@@ -127,10 +128,10 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, optimized_cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = False, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, optimized_cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = False, formatted_now=formatted_now, resultfile = resultfile)
     # 解の描画
-    vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
-    draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
+    # vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
+    # draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
     # k-meansの出力のコスト関数値を記録
     cost_record.append(optimized_cost)
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
@@ -404,5 +405,5 @@ if __name__ == '__main__':
     coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N= MESH_NUMBER,mu=MU, sigma=SIGMA)
     # # テスト用
     # DrawMesh(xx, yy, ww)
-    for i in range(75,ITERATIONS):
+    for i in range(ITERATIONS):
         main(i,MeshNumber=MESH_NUMBER,coords_population=coords_population, xx=xx, yy=yy, ww=ww,CreatedMesh = True, mu=MU, sigma=SIGMA)

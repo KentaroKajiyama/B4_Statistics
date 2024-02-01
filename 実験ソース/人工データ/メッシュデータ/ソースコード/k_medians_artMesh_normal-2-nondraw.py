@@ -9,6 +9,7 @@ from matplotlib.collections import PolyCollection
 from shapely.geometry import Polygon
 from turfpy.measurement import boolean_point_in_polygon
 from geojson import Feature, Point
+from scipy.spatial.distance import cdist, euclidean
 from pathlib import Path
 from datetime import datetime
 from matplotlib import rcParams
@@ -18,7 +19,7 @@ rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio'
 
 """
 問題設定① 
-n個の施設配置、最適な配置は総平均（期待値）で評価する。
+n個のポスト配置、最適な配置は総平均（期待値）で評価する。
 ----------------------------------------------------------------
 仮定
 ・10×10の正方形領域
@@ -28,15 +29,15 @@ n個の施設配置、最適な配置は総平均（期待値）で評価する�
 ・k-means法を利用
 ・サンプルは無限である
 ・正規化定数は１とみなす
+・図示は一切なし
 ----------------------------------------------------------------
 プログラムの改善点
 ・一点一点独立に扱っているので統一性を持たせたい
 ・挙動を見たいので更新過程も可視化する
 ・可視化になるべく時間がかからないようにしたい
 ・座標系を統一してそのままGIS上でも扱えるようにしたい。
-・
+・期待値計算について本当に正しいか確認する
 """
-
 ################################################################
 # 環境変数の設定
 # ディレクトリ名の環境変数
@@ -57,34 +58,35 @@ MOTHER_POINT_NUMBER = 5
 # 初期点の変更回数
 ITERATIONS = 1
 # 正規分布のパラメータ選択
-MU = mu1
-SIGMA = sigma1
+MU = mu2
+SIGMA = sigma2
 # メッシュ数
-MESH_NUMBER = 2000
+MESH_NUMBER = 1000
 # メッシュの透明度
 TRANSPARENCY = 0.9
 # メッシュを生成する乱数のSeed設定
 SEED_NUMBER = 42
 # メッシュのみの図を作るか否か
 MAKE_ONLY_MESH = False
-# 初期点を指定する場合はFalse
+# 初期点を指定する場合
 ISRANDOM = False
-POINTS = np.array([[-1.39,0],[1.39,0],[0,0],[0,1.39],[0,-1.39]])
+POINTS = np.array([[-2.01,0],[2.01,0],[0,0],[0,1.35],[0,-1.35]])
 ################################################################
 
+
 def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False, mu = None, sigma = None):
-    # ディレクトリの指定 実験データ/人口データ/ランダム/２乗/case1
-    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/２乗/case1")
+    # ディレクトリの指定 実験データ/人口データ/ランダム/1乗
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/１乗/case2")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
     formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
     # 保存用ディレクトリの指定
-    # experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i+1)+"_k3")
+    # experimentPath = experimentPathParent.joinpath(formatted_now+"_"+str(i+1))
     # 保存用ディレクトリの作成
     # os.mkdir(experimentPath) 
     # 結果の保存先
-    resultfile = "result_artMesh_Mean_normal_case1_k"+str(MOTHER_POINT_NUMBER)+".csv"
+    resultfile = "result_artMesh_Median_normal_case1_k"+str(MOTHER_POINT_NUMBER)+".csv"
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write(formatted_now + "\n")
         f.write(str(i+1)+"回目，np.seedIndex="+str(i)+"\n")
@@ -105,18 +107,18 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # MeshNumber**2の数のメッシュができる．
     MeshNumber = MESH_NUMBER
     if not CreatedMesh:
-        coords_population, xx, yy, ww = CreateMesh(-bnd_end,bnd_end,MeshNumber, mu=mu, sigma=sigma)
+        coords_population, xx, yy, ww = CreateMesh(-bnd_end,bnd_end,MeshNumber, mu = mu, sigma = sigma)
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("メッシュの数:"+ str(MeshNumber**2)+"\n")
     # メッシュデータの描画
-    DrawMesh(xx,yy,ww, formatted_now,experimentPath)
+    # DrawMesh(xx,yy,ww, formatted_now,experimentPath)
     # costの格納
     cost_record = []
     # 初期状態の図示
     # vor_polys_box = bounded_voronoi_mult(bnd_poly, pnts)
     # draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now, experimentPath, number = 0)
     # 初期状態のコストを計算
-    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = False)
+    cost = cost_function(coords_population[:,:2],coords_population[:,2:].ravel(),pnts, non_claster = True, median = True)
     cost_record.append(cost)
     # 初期点の記録
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
@@ -126,7 +128,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, optimized_cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, optimized_cost = weighted_kmedians(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = False, formatted_now=formatted_now, resultfile = resultfile)
     # 解の描画
     # vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
     # draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
@@ -137,7 +139,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
         np.savetxt(f, optimized_pnts, fmt = '%f')
         f.write("optimized cost\n")
         np.savetxt(f, [optimized_cost], fmt = '%f')
-    with open(experimentPathParent.joinpath("cost_stock.csv"), "a") as f:
+    with open(experimentPathParent.joinpath("cost_stock.csv"),"a") as f:
         np.savetxt(f, [optimized_cost], fmt = '%f')
     return 0
 
@@ -241,7 +243,7 @@ def draw_voronoi(bnd_poly, pnts, vor_polys_box, coords_population, formatted_now
     plt.savefig(filename)
     plt.close()
 
-def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None,resultfile = None):
+def weighted_kmedians(X, weights, n_clusters, pnts=None, max_iter=100, initial = False, config = False,formatted_now = None, experimentPath = None, resultfile = None):
     # データポイントの数
     n_samples = X.shape[0]
     # ランダムに初期クラスタ中心を選択
@@ -251,7 +253,7 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
         random_indices = np.random.choice(n_samples, n_clusters, replace=False)
         centroids = X[random_indices]
 
-    #　コストの推移の確認のため描画するかしないか場合分け
+    # コストの推移の確認のため描画するかしないか場合分け
     if config:
         cost_record = []
         for _ in range(max_iter):
@@ -259,14 +261,17 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
+            new_centroids = []
+            for k in range(n_clusters):
+                new_centroids.append(geometric_median(X[labels == k], mesh_weight=weights[labels == k]))
+            new_centroids =  np.array(new_centroids)
 
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
 
             centroids = new_centroids
-            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = False))
+            cost_record.append(cost_function(X,weights,centroids,labels,non_claster = False,median = True))
         with open(experimentPath.joinpath(resultfile), "a") as f:
             f.write("cost record in iterations\n")
             np.savetxt(f, np.array(cost_record), fmt = '%f')
@@ -277,19 +282,64 @@ def weighted_kmeans(X, weights, n_clusters, pnts=None, max_iter=100, initial = F
             distances = np.array([np.sum(weights[:, np.newaxis] * (X - centroid) ** 2, axis=1) for centroid in centroids])
             labels = np.argmin(distances, axis=0)
             # 新しいクラスタの中心を計算
-            new_centroids = np.array([np.average(X[labels == k], axis=0, weights=weights[labels == k]) for k in range(n_clusters)])
+            new_centroids = []
+            for k in range(n_clusters):
+                new_centroids.append(geometric_median(X[labels == k], mesh_weight=weights[labels == k]))
+            new_centroids =  np.array(new_centroids)
             # 収束チェック
             if np.all(centroids == new_centroids):
                 break
-            centroids = new_centroids
+
+        centroids = new_centroids
 
     # コスト関数（目的関数）の計算
     cost_function_value = 0
     for i in range(len(X)):
         cluster_center = centroids[labels[i]]
-        cost_function_value += weights[i]*np.sum((X[i] - cluster_center)**2)
+        cost_function_value += weights[i]*math.sqrt(np.sum((X[i] - cluster_center)**2))
     
     return centroids, labels, cost_function_value
+
+def geometric_median(X, mesh_weight, eps=1e-5):
+    #初期点は平均値から始める
+    if X.size == 0:
+        print("X.size is 0")
+        return ["None"]
+    y = np.mean(X, 0)
+    mesh_weight = mesh_weight.reshape([-1,1])
+    while True:
+        D = cdist(X, [y])
+        nonzeros = (D != 0)[:, 0]
+        zero = (D == 0)[:, 0]
+        Dinv = mesh_weight[nonzeros] / D[nonzeros]
+        Dinvs = np.sum(Dinv)
+        #重みが0のものにだけ当たっちゃった場合
+        if Dinvs == 0:
+            print("Dinvs == 0")
+            return y
+        W = Dinv / Dinvs
+        T = np.sum(W * X[nonzeros], 0)
+
+        num_zeros = len(X) - np.sum(nonzeros)
+        # yとx1,...,xmが一つも被っていない場合
+        if num_zeros == 0:
+            y1 = T
+        # yとx1,...,xmが全て被っている→つまり全部同じ点
+        elif num_zeros == len(X):
+            return y
+        # 1点だけ被っている（全てのサンプル点が異なる座標を持つという仮定を入れている）
+        else:
+            R = (T - y) * Dinvs
+            r = np.linalg.norm(R)
+            rinv = 0 if r == 0 else mesh_weight[zero][0][0]/r
+            y1 = max(0, 1-rinv)*T + min(1, rinv)*y
+        # 閾値を下回った時に終了
+        if euclidean(y, y1) < eps:
+            return y1
+
+        y = y1
+
+    
 
 # コスト関数単体
 def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = False):
@@ -310,7 +360,7 @@ def cost_function(X,weights,centroids,labels = 0,non_claster = False,median = Fa
     return cost_function_value
 
 # メッシュの生成
-def CreateMesh(bndmin, bndmax,N = 200, mu = mu1, sigma = sigma1):
+def CreateMesh(bndmin, bndmax,N = 200, mu = None, sigma = None):
     X = np.linspace(bndmin,bndmax, N)
     Y = np.linspace(bndmin,bndmax, N)
     X, Y = np.meshgrid(X, Y)
@@ -331,7 +381,7 @@ def CreateMesh(bndmin, bndmax,N = 200, mu = mu1, sigma = sigma1):
 # メッシュの描画
 def DrawMesh(X_grid, Y_grid, weights_grid, formatted_now = "Now", experimentPath = ""):
     plt.figure(figsize=(10, 8))
-    plt.pcolormesh(X_grid, Y_grid, weights_grid, cmap="Reds",shading="auto")
+    plt.pcolormesh(X_grid, Y_grid, weights_grid,cmap="Reds", shading="auto")
     plt.colorbar(label="Weight")
     plt.xlabel("X-axis")
     plt.ylabel("Y-axis")
@@ -350,28 +400,10 @@ def draw_cost(cost_record,formatted_now, experimentPath):
     plt.close()
     # plt.show()
 
-# メッシュ数の記録
-# def draw_mesh_sum(mesh_sum_record,formatted_now, experimentPath):
-#     plt.figure()
-#     plt.plot(mesh_sum_record)
-#     plt.xlabel("n(回)")
-#     plt.ylabel("総メッシュ数")
-#     filename = experimentPath.joinpath("MeshSumRecord_"+formatted_now+".png")
-#     plt.savefig(filename)
-#     plt.clf()
-#     # plt.show()
     
 if __name__ == '__main__':
-    coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N=MESH_NUMBER,mu=MU, sigma=SIGMA)
+    coords_population, xx, yy,ww=CreateMesh(bndmin=-5,bndmax=5,N= MESH_NUMBER,mu=MU, sigma=SIGMA)
+    # # テスト用
+    # DrawMesh(xx, yy, ww)
     for i in range(ITERATIONS):
-        main(
-            i,
-            MeshNumber=MESH_NUMBER,
-            coords_population=coords_population,
-            xx=xx, 
-            yy=yy, 
-            ww=ww,
-            CreatedMesh = True, 
-            mu=MU, 
-            sigma=SIGMA
-            )
+        main(i,MeshNumber=MESH_NUMBER,coords_population=coords_population, xx=xx, yy=yy, ww=ww,CreatedMesh = True, mu=MU, sigma=SIGMA)

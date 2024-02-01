@@ -53,14 +53,14 @@ mu3 = [0,0]; sigma3 = [[1,0.5],[0.5,1]]
 ################################################################
 # 各種パラメータの設定
 # 母点の数
-MOTHER_POINT_NUMBER = 5
+MOTHER_POINT_NUMBER = 3
 # 初期点の変更回数
 ITERATIONS = 1
 # 正規分布のパラメータ選択
-MU = mu1
-SIGMA = sigma1
+MU = mu2
+SIGMA = sigma2
 # メッシュ数
-MESH_NUMBER = 2000
+MESH_NUMBER = 1000
 # メッシュの透明度
 TRANSPARENCY = 0.9
 # メッシュを生成する乱数のSeed設定
@@ -69,12 +69,12 @@ SEED_NUMBER = 42
 MAKE_ONLY_MESH = False
 # 初期点を指定する場合はFalse
 ISRANDOM = False
-POINTS = np.array([[-1.39,0],[1.39,0],[0,0],[0,1.39],[0,-1.39]])
+POINTS = np.array([[-1.5,-0.4],[1.5,-0.4],[0,0.8]])
 ################################################################
 
 def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,CreatedMesh = False, mu = None, sigma = None):
     # ディレクトリの指定 実験データ/人口データ/ランダム/２乗/case1
-    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/２乗/case1")
+    experimentPathParent = Path(__file__).resolve().parent.parent.parent.parent.parent.joinpath("実験データ/人工データ/メッシュ/正規分布/２乗/case2")
     # 現在の日時を取得
     now = datetime.now()
     # 日時を文字列としてフォーマット
@@ -109,7 +109,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     with open(experimentPathParent.joinpath(resultfile), "a") as f:
         f.write("メッシュの数:"+ str(MeshNumber**2)+"\n")
     # メッシュデータの描画
-    DrawMesh(xx,yy,ww, formatted_now,experimentPath)
+    # DrawMesh(xx,yy,ww, formatted_now,experimentPath)
     # costの格納
     cost_record = []
     # 初期状態の図示
@@ -126,7 +126,7 @@ def main(i,MeshNumber=0,coords_population=None, xx=None, yy=None, ww=None,Create
     # ここで最大の繰り返し回数を変更する
     MaxIterations = 100
     # 実行
-    optimized_pnts, labels, optimized_cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = True, formatted_now=formatted_now, experimentPath=experimentPath, resultfile = resultfile)
+    optimized_pnts, labels, optimized_cost = weighted_kmeans(coords_population[:,:2],coords_population[:,2:].ravel(), n, pnts = pnts, max_iter = MaxIterations, initial = True, config = False, formatted_now=formatted_now, resultfile = resultfile)
     # 解の描画
     # vor_polys_box = bounded_voronoi_mult(bnd_poly, optimized_pnts)
     # draw_voronoi(bnd_poly, optimized_pnts, vor_polys_box, coords_population, formatted_now, experimentPath, labels=labels, coloring = True)
