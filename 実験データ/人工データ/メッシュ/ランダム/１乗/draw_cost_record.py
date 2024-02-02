@@ -21,8 +21,8 @@ def draw_cost_record():
     min_index = np.argmin(data)
     # データをプロット
     plt.plot(data, label='Data')
-    plt.xlabel('Index')
-    plt.ylabel('Value')
+    plt.xlabel('初期点の乱数seed')
+    plt.ylabel('コスト関数値')
 
     # 最小値を強調
     plt.scatter(min_index, min_value, color='red', label='Min Value', s=20)
